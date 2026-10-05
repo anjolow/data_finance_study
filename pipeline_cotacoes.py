@@ -28,8 +28,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ETL_Cotacoes")
 
-# Carrega variaveis de ambiente (.env)
-load_dotenv()
+# Carrega variaveis de ambiente (.env) de forma robusta
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, ".env"), override=True)
 
 # Configuracoes de Banco de Dados
 DB_HOST = os.getenv("DB_HOST", "localhost")
