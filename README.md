@@ -1,4 +1,4 @@
-# 📈 Financial Data Engineering & Market Data Pipeline
+# Financial Data Engineering & Market Data Pipeline
 
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%2B-blue?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-yellow?logo=python&logoColor=white)](https://www.python.org/)
@@ -9,7 +9,7 @@ Pipeline de Engenharia de Dados para ingestão, processamento e carga de cotaç�
 
 ---
 
-## 🏛️ Arquitetura do Projeto
+## Arquitetura do Projeto
 
 ```
                [ Alpha Vantage API ]
@@ -33,7 +33,7 @@ Pipeline de Engenharia de Dados para ingestão, processamento e carga de cotaç�
 
 ---
 
-## 💎 Decisões de Arquitetura e Engenharia
+## Decisões de Arquitetura e Engenharia
 
 1. **Bulk Insert com `psycopg2.extras.execute_values`:**
    - Redução drástica de round-trips de rede via batching otimizado (`page_size=1000`).
@@ -57,7 +57,7 @@ Pipeline de Engenharia de Dados para ingestão, processamento e carga de cotaç�
 
 ---
 
-## 🗄️ Modelo de Dados
+## Modelo de Dados
 
 ### `Dim_Ativo`
 Armazena os metadados cadastrais dos ativos negociados:
@@ -88,7 +88,7 @@ Registro de relatórios e metadados analíticos em formato semiestruturado:
 
 ---
 
-## 🚀 Como Executar Localmente
+## Como Executar Localmente
 
 ### 1. Clonar o Repositório
 ```bash
@@ -134,7 +134,7 @@ python pipeline_cotacoes.py
 
 ---
 
-## ⚙️ Configuração do CI/CD (GitHub Actions)
+## Configuração do CI/CD (GitHub Actions)
 
 Para que o workflow `.github/workflows/etl_diario.yml` funcione de forma autônoma na nuvem, adicione as seguintes **Repository Secrets** no GitHub (**Settings > Secrets and variables > Actions**):
 
@@ -149,6 +149,6 @@ Para que o workflow `.github/workflows/etl_diario.yml` funcione de forma autôno
 
 ---
 
-## 👨‍💻 Autor
+## Autor
 Desenvolvido por **Lucas Anjos da Silva**.
 Projeto de portfólio voltado para Engenharia de Dados e Infraestrutura de Dados para o Mercado Financeiro.
