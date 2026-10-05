@@ -54,16 +54,21 @@ ATIVOS_METADADOS = {
 
 
 def obter_conexao():
-    """Cria e retorna uma conexao segura com o PostgreSQL."""
+    """Cria e retorna uma conexao segura com o PostgreSQL (local ou nuvem como Supabase)."""
     try:
-        conn = psycopg2.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            dbname=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            connect_timeout=10
-        )
+        conn_kwargs = {
+            "host": DB_HOST,
+            "port": DB_PORT,
+            "dbname": DB_NAME,
+            "user": DB_USER,
+            "password": DB_PASSWORD,
+            "connect_timeout": 15
+        }
+        # Para provedores em nuvem (ex: Supabase, Neon, AWS RDS), conexao SSL e mandataria
+        if DB_HOST not in ("localhost", "127.0.0.1"):
+            conn_kwargs["sslmode"] = "require"
+
+        conn = psycopg2.connect(**conn_kwargs)
         return conn
     except Exception as err:
         logger.error("Falha critica ao conectar com PostgreSQL em %s:%s - %s", DB_HOST, DB_PORT, err)
