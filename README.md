@@ -137,14 +137,18 @@ API_KEY=sua_chave_alphavantage
 GEMINI_API_KEY=sua_chave_google_ai_studio
 ```
 
-### 3. Execução dos Pipelines
+### 3. Execução dos Pipelines e Dashboard
 ```powershell
 # 1. Ingestão de Cotações Diárias (Fato_Cotacao)
 python pipeline_cotacoes.py
 
 # 2. Análise Quantitativa + Enriquecimento com IA (Fato_Analise_Mercado)
 python pipeline_analise_mercado.py
+
+# 3. Execução do Dashboard Interativo no Navegador (Streamlit)
+streamlit run app.py
 ```
+*(O Streamlit abrirá automaticamente a interface web em `http://localhost:8501`)*
 
 ---
 
