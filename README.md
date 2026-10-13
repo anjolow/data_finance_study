@@ -1,63 +1,79 @@
 # Financial Data Engineering & Market Data Pipeline
 
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%2B-blue?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Python](https://img.shields.io/badge/Python-3.11%2B-yellow?logo=python&logoColor=white)](https://www.python.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17%2B-blue?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Python](https://img.shields.io/badge/Python-3.12%2B-yellow?logo=python&logoColor=white)](https://www.python.org/)
+[![AI](https://img.shields.io/badge/Google_Gemini-3.8_Flash-orange?logo=google&logoColor=white)](https://ai.google.dev/)
 [![CI/CD](https://img.shields.io/badge/GitHub_Actions-ETL_Diário-green?logo=github-actions&logoColor=white)](https://github.com/features/actions)
 [![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)](LICENSE)
 
-Pipeline de Engenharia de Dados para ingestão, processamento e carga de cotações financeiras em alta volumetria. Desenvolvido com foco em ambientes de **missão crítica**, **baixa latência**, **idempotência estrita** e **integridade relacional** para o mercado de capitais.
+Pipeline de Engenharia de Dados para ingestão, processamento quantitativo e geração de inteligência de mercado com IA generativa em alta volumetria. Desenvolvido com foco em ambientes de **missão crítica**, **baixa latência**, **idempotência estrita** e **modelagem dimensional** para o mercado de capitais.
 
 ---
 
-## Arquitetura do Projeto
+## 🏛️ Arquitetura do Projeto
 
 ```
-               [ Alpha Vantage API ]
-                         │
-                         ▼ (HTTP GET / JSON)
-              [ pipeline_cotacoes.py ]
-                         │
-        ┌────────────────┴────────────────┐
-        │  1. Sincroniza Dimensões        │
-        │  2. Tipagem e Higienização     │
-        │  3. Bulk Load Idempotente       │
-        └────────────────┬────────────────┘
-                         ▼ (psycopg2 execute_values)
-            [ PostgreSQL: banco_financeiro ]
-        ┌────────────────────────────────┐
-        │ ├── Dim_Ativo (SCD / Dimensão) │
-        │ ├── Fato_Cotacao (OHLCV)       │
-        │ └── Fato_Analise_Mercado       │
-        └────────────────────────────────┘
+                [ Alpha Vantage API ]
+                          │
+                          ▼ (HTTP GET / JSON)
+               [ pipeline_cotacoes.py ]
+                          │
+         ┌────────────────┴────────────────┐
+         │  1. Sincroniza Dim_Ativo        │
+         │  2. Tipagem Estrita (Decimal)   │
+         │  3. Bulk Load Idempotente       │
+         └────────────────┬────────────────┘
+                          ▼ (execute_values)
+              ┌───────────────────────┐
+              │      PostgreSQL       │
+              │  ├── Dim_Ativo        │
+              │  └── Fato_Cotacao     │◄────────┐
+              └───────────┬───────────┘         │ (Leitura OHLCV Recente)
+                          │                     │
+                          ▼                     │
+           [ pipeline_analise_mercado.py ] ─────┘
+                          │
+         ┌────────────────┴────────────────┐
+         │  1. Motor Quantitativo:         │
+         │     SMA 9/21, RSI 14, Volume    │
+         │  2. Grounding com Gemini 3.8:   │
+         │     Roteiro Executivo + Sentim. │
+         │  3. Bulk Upsert JSONB           │
+         └────────────────┬────────────────┘
+                          ▼
+              ┌───────────────────────┐
+              │ Fato_Analise_Mercado  │
+              │ (GIN Index em JSONB)  │
+              └───────────────────────┘
 ```
 
 ---
 
-## Decisões de Arquitetura e Engenharia
+## 💎 Decisões de Arquitetura e Engenharia
 
 1. **Bulk Insert com `psycopg2.extras.execute_values`:**
    - Redução drástica de round-trips de rede via batching otimizado (`page_size=1000`).
    - Throughput exponencialmente superior a inserts individuais linha a linha.
 
 2. **Idempotência Estrita (Upsert):**
-   - Utilização de `ON CONFLICT (ticker, data_pregao) DO UPDATE`.
+   - Utilização de `ON CONFLICT ... DO UPDATE` em todas as tabelas fato (`Fato_Cotacao` e `Fato_Analise_Mercado`).
    - Reprocessamentos e re-execuções manuais ou por falha de rede nunca geram registros duplicados e atualizam eventuais correções pós-fechamento do pregão.
 
-3. **Garantia de Integridade Referencial:**
-   - `Fato_Cotacao` possui foreign key para `Dim_Ativo(ticker)`.
-   - O pipeline insere proativamente metadados na tabela dimensão (`ON CONFLICT (ticker) DO NOTHING`) antes da ingestão dos fatos, impedindo exceções de chave estrangeira em tempo de execução.
+3. **Arquitetura Híbrida Data-to-Text (Quant + LLM sem Alucinações):**
+   - **Abordagem C (Motor Quantitativo):** Cálculos matemáticos determinísticos (Médias Móveis SMA 9/21, IFR/RSI 14, Volume Ratio, Amplitude Intraday) executados diretamente sobre a série histórica.
+   - **Abordagem B (Enriquecimento com IA Gemini 3.8 Flash):** O modelo recebe métricas exatas (*grounding*) e gera pareceres em linguagem natural (`roteiro_texto`) e metadados estruturados (`metadados_ia`), eliminando qualquer risco de alucinação de preços.
+   - **Panorama Macro (`ticker = NULL`):** Visão consolidada do pregão do dia sintetizando a cesta de ativos monitorados.
 
-4. **Tratamento de Rate Limit e Contingência:**
-   - Suporte nativo a ativos da B3 (sufixo `.SA`) e bolsas globais.
-   - Pacing de requisições respeitando o rate limit da API financeira.
-   - Fallback de contingência integrado para testes de desenvolvimento e validações offline.
+4. **Colunas Semiestruturadas e Índices GIN:**
+   - O campo `metadados_ia` armazena o payload da IA e indicadores técnicos em formato `JSONB`.
+   - Um índice `GIN` acelera consultas complexas por propriedades aninhadas em milissegundos (ex: busca por ativos com sentimento `bullish` ou `RSI > 70`).
 
-5. **CI/CD Automatizado:**
-   - Workflow agendado via GitHub Actions de segunda a sexta-feira após o fechamento dos mercados (22:00 UTC / 19:00 BRT).
+5. **Infraestrutura em Nuvem & Compatibilidade IPv4:**
+   - Conexão segura com banco gerenciado no Supabase via **Connection Pooler IPv4** (`aws-0-us-west-2.pooler.supabase.com`) e `sslmode="require"`, permitindo que os runners do GitHub Actions se conectem sem restrições de rede.
 
 ---
 
-## Modelo de Dados
+## 🗄️ Modelo de Dados
 
 ### `Dim_Ativo`
 Armazena os metadados cadastrais dos ativos negociados:
@@ -81,74 +97,97 @@ Histórico de negociação e série temporal OHLCV:
 Registro de relatórios e metadados analíticos em formato semiestruturado:
 - `id` (BIGSERIAL PK)
 - `data_analise` (DATE)
-- `ticker` (FK -> `Dim_Ativo.ticker`, opcional)
+- `ticker` (FK -> `Dim_Ativo.ticker`, `NULL` para fechamento macro de mercado)
 - `fonte_origem` (VARCHAR(100))
 - `roteiro_texto` (TEXT)
-- `metadados_ia` (JSONB com índice GIN para buscas ultra-rápidas)
+- `metadados_ia` (JSONB com sentimento, confiança, risco, drivers e indicadores)
+- **Índice GIN:** `idx_fato_analise_json`
+- **Índice de Idempotência:** `idx_fato_analise_idempotencia (COALESCE(ticker, 'GERAL'), data_analise, fonte_origem)`
 
 ---
 
-## Como Executar Localmente
+## 🚀 Como Executar Localmente
 
-### 1. Clonar o Repositório
-```bash
+### 1. Clonar o Repositório e Configurar Ambiente
+```powershell
 git clone https://github.com/anjolow/data_finance_study.git
 cd data_finance_study
-```
 
-### 2. Configurar o Ambiente Virtual Python
-```bash
-# Windows
+# Criação e ativação da venv (Windows)
 py -m venv venv
-.\venv\Scripts\activate
+.\venv\Scripts\Activate.ps1
 
-# Linux / MacOS
-python3 -m venv venv
-source venv/bin/activate
-```
-
-### 3. Instalar Dependências
-```bash
+# Instalação de dependências
 pip install -r requirements.txt
 ```
 
-### 4. Configurar as Variáveis de Ambiente
+### 2. Configurar as Variáveis de Ambiente
 Copie o template de variáveis:
-```bash
+```powershell
 cp .env.example .env
 ```
-Edite o arquivo `.env` com suas credenciais:
+Preencha o `.env` com suas credenciais:
 ```ini
-DB_HOST=localhost
+DB_HOST=aws-0-us-west-2.pooler.supabase.com
 DB_PORT=5432
-DB_NAME=banco_financeiro
-DB_USER=postgres
+DB_NAME=postgres
+DB_USER=postgres.seu_projeto
 DB_PASSWORD=sua_senha
 API_KEY=sua_chave_alphavantage
+GEMINI_API_KEY=sua_chave_google_ai_studio
 ```
 
-### 5. Executar o Pipeline
-```bash
+### 3. Execução dos Pipelines
+```powershell
+# 1. Ingestão de Cotações Diárias (Fato_Cotacao)
 python pipeline_cotacoes.py
+
+# 2. Análise Quantitativa + Enriquecimento com IA (Fato_Analise_Mercado)
+python pipeline_analise_mercado.py
 ```
 
 ---
 
-## Configuração do CI/CD (GitHub Actions)
+## 🔍 Exemplos de Consultas Avançadas (SQL + JSONB)
 
-Para que o workflow `.github/workflows/etl_diario.yml` funcione de forma autônoma na nuvem, adicione as seguintes **Repository Secrets** no GitHub (**Settings > Secrets and variables > Actions**):
+```sql
+-- 1. Buscar todas as análises com sentimento Bullish usando o índice GIN
+SELECT ticker, data_analise, metadados_ia->>'confianca_score' as confianca
+FROM Fato_Analise_Mercado
+WHERE metadados_ia @> '{"sentimento": "bullish"}';
+
+-- 2. Filtrar ativos em sobrecompra crítica (RSI > 70) via JSONB aninhado
+SELECT ticker, data_analise, metadados_ia->'indicadores_quant'->>'rsi_14' as rsi
+FROM Fato_Analise_Mercado
+WHERE ticker IS NOT NULL 
+  AND (metadados_ia->'indicadores_quant'->>'rsi_14')::float > 70;
+
+-- 3. Consultar o Panorama Geral de Mercado (Macro)
+SELECT data_analise, roteiro_texto, metadados_ia->'resumo_estatistico' as stats
+FROM Fato_Analise_Mercado
+WHERE ticker IS NULL;
+```
+
+---
+
+## ⚙️ Configuração do CI/CD (GitHub Actions)
+
+O workflow `.github/workflows/etl_diario.yml` roda automaticamente de segunda a sexta-feira às 22:00 UTC (19:00 BRT).
+
+Cadastre as seguintes **Repository Secrets** no GitHub (**Settings > Secrets and variables > Actions**):
 
 | Secret | Descrição | Exemplo |
 | :--- | :--- | :--- |
-| `DB_HOST` | Host do banco de dados | `db.meuservidor.com` |
-| `DB_PORT` | Porta de conexão do PostgreSQL | `5432` |
-| `DB_NAME` | Nome do banco de dados | `banco_financeiro` |
-| `DB_USER` | Usuário com permissão de DML | `postgres` |
+| `DB_HOST` | Host do Connection Pooler IPv4 | `aws-0-us-west-2.pooler.supabase.com` |
+| `DB_PORT` | Porta de conexão | `5432` |
+| `DB_NAME` | Nome do banco | `postgres` |
+| `DB_USER` | Usuário com ID do projeto | `postgres.seu_projeto` |
 | `DB_PASSWORD` | Senha segura do banco | `********` |
-| `API_KEY` | Chave de API da Alpha Vantage | `********` |
+| `API_KEY` | Chave da Alpha Vantage | `********` |
+| `GEMINI_API_KEY` | Chave da Google AI Studio | `********` |
 
 ---
 
-## Autor
+## 👨‍💻 Autor
 Desenvolvido por **Lucas Anjos da Silva**.
-Projeto de portfólio voltado para Engenharia de Dados e Infraestrutura de Dados para o Mercado Financeiro.
+Projeto de portfólio voltado para Engenharia de Dados, Finanças Quantitativas e IA Generativa.

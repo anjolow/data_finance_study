@@ -8,4 +8,8 @@ CREATE TABLE Fato_Analise_Mercado (
 );
 
 -- Índice GIN, essencial para acelerar buscas dentro de propriedades JSONB no PostgreSQL
-CREATE INDEX idx_fato_analise_json ON Fato_Analise_Mercado USING GIN (metadados_ia);
+CREATE INDEX IF NOT EXISTS idx_fato_analise_json ON Fato_Analise_Mercado USING GIN (metadados_ia);
+
+-- Índice único para garantir idempotência em reexecuções (evita duplicidade no mesmo dia e fonte)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fato_analise_idempotencia 
+ON Fato_Analise_Mercado (COALESCE(ticker, 'GERAL'), data_analise, fonte_origem);

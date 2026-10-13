@@ -25,7 +25,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Executar Pipeline ETL
+      - name: Executar Pipeline de Cotacoes (Fato_Cotacao)
         env:
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_PORT: ${{ secrets.DB_PORT }}
@@ -35,3 +35,15 @@ jobs:
           API_KEY: ${{ secrets.API_KEY }}
         run: |
           python pipeline_cotacoes.py
+
+      - name: Executar Analise de Mercado Quant + IA (Fato_Analise_Mercado)
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python pipeline_analise_mercado.py
+
