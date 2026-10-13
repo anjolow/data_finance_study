@@ -26,6 +26,8 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# IDEs
+# IDEs e Assistentes
 .vscode/
 .idea/
+gemini.md
+GEMINI.md
