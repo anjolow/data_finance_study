@@ -1,7 +1,7 @@
 """
 Plataforma de Inteligencia de Mercado & Analise Quantitativa
 Dashboard Interativo em Streamlit + Plotly
-Case de Engenharia de Dados & Finanças - Nelogica
+Engenharia de Dados & Finanças
 """
 
 import os
@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 # 1. CONFIGURAÇÃO DA PÁGINA E ESTILO VISUAL
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Market Intel Platform | Nelogica Case",
+    page_title="Market Intel Platform | Financial Data",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -180,7 +180,7 @@ with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/bullish.png", width=64)
     st.title("Market Intel Platform")
     st.markdown("**Engenharia de Dados & IA**")
-    st.caption("Case Portfólio — Foco Mercado Financeiro (Nelogica)")
+    st.caption("Plataforma de Mercado Financeiro & Séries Temporais")
     st.divider()
 
     df_ativos = carregar_dim_ativos()

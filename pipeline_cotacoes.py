@@ -1,6 +1,6 @@
 """
 Pipeline ETL de Cotacoes Financeiras (Mercado de Capitais)
-Projeto de Engenharia de Dados / Portfolio Nelogica
+Projeto de Engenharia de Dados / Mercado de Capitais
 
 Responsabilidades:
 1. Extracao: Consumo de dados via API Financeira (Alpha Vantage) com gestao de rate limit e fallback resiliente.

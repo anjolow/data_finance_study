@@ -1,6 +1,6 @@
 """
 Pipeline de Inteligencia de Mercado Hibrido (Quantitativo + IA Generativa)
-Projeto de Engenharia de Dados / Portfolio Nelogica
+Projeto de Engenharia de Dados / Mercado Financeiro
 
 Responsabilidades:
 1. Motor Quantitativo (Abordagem C):
