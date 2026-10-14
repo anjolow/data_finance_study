@@ -298,9 +298,9 @@ else:
         fig = make_subplots(
             rows=3, cols=1,
             shared_xaxes=True,
-            vertical_spacing=0.07,
+            vertical_spacing=0.09,
             row_heights=[0.56, 0.22, 0.22],
-            subplot_titles=("Preço e Médias Móveis (SMA 9 e 21)", "Volume de Negociação", "IFR / RSI (14)")
+            subplot_titles=("<b>Preço e Médias Móveis (SMA 9 e 21)</b>", "<b>Volume de Negociação</b>", "<b>IFR / RSI (14)</b>")
         )
 
         # 1. Candlestick
@@ -354,19 +354,19 @@ else:
             ]
         )
 
-        # Alinha e estiliza títulos dos subplots para evitar sobreposição
+        # Alinha e estiliza títulos dos subplots em negrito e com maior destaque
         for annotation in fig["layout"]["annotations"]:
             annotation.update(
                 x=0.0,
                 xanchor="left",
-                yshift=8,
-                font=dict(size=12, color="#B0BEC5")
+                yshift=10,
+                font=dict(size=16, color="#E0E0E0")
             )
 
         fig.update_layout(
             template="plotly_dark",
-            height=720,
-            margin=dict(l=20, r=20, t=40, b=25),
+            height=760,
+            margin=dict(l=20, r=20, t=50, b=25),
             xaxis_rangeslider_visible=False,
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1.0, font=dict(size=11))
         )
