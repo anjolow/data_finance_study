@@ -343,6 +343,17 @@ else:
         fig.add_hline(y=70, line_dash="dash", line_color="#EF5350", line_width=1, row=3, col=1)
         fig.add_hline(y=30, line_dash="dash", line_color="#26A69A", line_width=1, row=3, col=1)
 
+        # Remove dias sem pregão (fins de semana e feriados) para eliminar espaços em branco
+        todas_datas = pd.date_range(start=df_cotacoes["data_pregao"].min(), end=df_cotacoes["data_pregao"].max())
+        datas_pregao = set(df_cotacoes["data_pregao"].dt.strftime("%Y-%m-%d"))
+        datas_sem_pregao = [d.strftime("%Y-%m-%d") for d in todas_datas if d.strftime("%Y-%m-%d") not in datas_pregao]
+
+        fig.update_xaxes(
+            rangebreaks=[
+                dict(values=datas_sem_pregao)
+            ]
+        )
+
         fig.update_layout(
             template="plotly_dark",
             height=650,
