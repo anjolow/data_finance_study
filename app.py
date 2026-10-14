@@ -218,7 +218,7 @@ with st.sidebar:
 # -----------------------------------------------------------------------------
 # 4. CABEÇALHO & SEÇÃO MACROECONÔMICA (PANORAMA DO PREGÃO)
 # -----------------------------------------------------------------------------
-st.title("📈 Plataforma de Inteligência Quantitativa & IA de Mercado")
+st.title("Plataforma de Inteligência Quantitativa & IA de Mercado")
 st.markdown("Pipeline ETL de alta volumetria em PostgreSQL integrado com motor quantitativo e IA generativa.")
 
 df_analises = carregar_analises()
@@ -292,7 +292,7 @@ else:
     col_grafico, col_ia = st.columns([1.5, 1])
 
     with col_grafico:
-        st.subheader("📊 Gráfico Técnico & Volume (OHLCV)")
+        st.subheader("Gráfico Técnico & Volume (OHLCV)")
 
         # Criação de Subplots: Linha 1 = Candlestick, Linha 2 = Volume, Linha 3 = RSI
         fig = make_subplots(
@@ -414,7 +414,7 @@ else:
             # Tabela de Indicadores Quantitativos Grounded
             ind_quant = meta.get("indicadores_quant", {})
             if ind_quant:
-                st.markdown("##### 📐 Indicadores Calculados pelo Motor Quantitativo")
+                st.markdown("##### Indicadores Calculados pelo Motor Quantitativo")
                 st.dataframe(
                     pd.DataFrame([
                         {"Indicador": "SMA 9 (Média Rápida)", "Valor": f"R$ {ind_quant.get('sma_9', 0):.2f}"},
