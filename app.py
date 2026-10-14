@@ -298,8 +298,8 @@ else:
         fig = make_subplots(
             rows=3, cols=1,
             shared_xaxes=True,
-            vertical_spacing=0.03,
-            row_heights=[0.60, 0.20, 0.20],
+            vertical_spacing=0.07,
+            row_heights=[0.56, 0.22, 0.22],
             subplot_titles=("Preço e Médias Móveis (SMA 9 e 21)", "Volume de Negociação", "IFR / RSI (14)")
         )
 
@@ -354,12 +354,21 @@ else:
             ]
         )
 
+        # Alinha e estiliza títulos dos subplots para evitar sobreposição
+        for annotation in fig["layout"]["annotations"]:
+            annotation.update(
+                x=0.0,
+                xanchor="left",
+                yshift=8,
+                font=dict(size=12, color="#B0BEC5")
+            )
+
         fig.update_layout(
             template="plotly_dark",
-            height=650,
-            margin=dict(l=20, r=20, t=30, b=20),
+            height=720,
+            margin=dict(l=20, r=20, t=40, b=25),
             xaxis_rangeslider_visible=False,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1.0, font=dict(size=11))
         )
         st.plotly_chart(fig, use_container_width=True)
 
