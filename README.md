@@ -78,7 +78,7 @@ Pipeline de Engenharia de Dados para ingestão, processamento quantitativo e ger
 
 7. **Dashboard Interativo em Streamlit com Sincronização Temporal:**
    - Sincronização bidirecional de datas entre a análise macroeconômica e os pareceres individuais.
-   - Exibição de notícias do pregão com links de leitura externa e badges temáticos de sentimento.
+   - Exibição de notícias do pregão posicionadas diretamente abaixo dos gráficos técnicos, sincronizadas e atualizadas dinamicamente conforme a data selecionada.
 
 ---
 

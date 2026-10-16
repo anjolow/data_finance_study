@@ -376,6 +376,33 @@ else:
 
     st.write("")
 
+    # -------------------------------------------------------------------------
+    # Pré-resolução da Análise e Data do Ativo Selecionado (antes dos blocos visuais)
+    # -------------------------------------------------------------------------
+    analise_ativo = None
+    matches_ativo = pd.DataFrame()
+    datas_ativo = []
+    data_ativo_sel = None
+
+    if not df_analises.empty:
+        matches_ativo = df_analises[df_analises["ticker"] == ticker_selecionado]
+        if not matches_ativo.empty:
+            datas_ativo = sorted(matches_ativo["data_analise"].dt.date.unique(), reverse=True)
+            # Garante que a data sincronizada seja válida para o ativo
+            if st.session_state.get("sel_data_ativo_sync") not in datas_ativo:
+                st.session_state["sel_data_ativo_sync"] = datas_ativo[0]
+
+            data_ativo_sel = st.session_state["sel_data_ativo_sync"]
+            filtro_data = matches_ativo[matches_ativo["data_analise"].dt.date == data_ativo_sel]
+            if not filtro_data.empty:
+                analise_ativo = filtro_data.iloc[0]
+
+    meta_ativo = None
+    if analise_ativo is not None:
+        meta_ativo = analise_ativo["metadados_ia"]
+        if isinstance(meta_ativo, str):
+            meta_ativo = json.loads(meta_ativo)
+
     # Layout Principal: Gráfico Técnico vs Parecer da IA
     col_grafico, col_ia = st.columns([1.5, 1])
 
@@ -460,41 +487,72 @@ else:
         )
         st.plotly_chart(fig, use_container_width=True)
 
+        # ---------------------------------------------------------------------
+        # Notícias do Dia do Ativo Selecionado (Abaixo dos Gráficos)
+        # ---------------------------------------------------------------------
+        st.markdown(f"#### Notícias do Dia ({ticker_selecionado})")
+        if analise_ativo is not None and meta_ativo:
+            noticias_ativo = meta_ativo.get("noticias_mercado", [])
+            score_noticias = meta_ativo.get("score_sentimento_noticias")
+            classif_noticias = meta_ativo.get("classificacao_sentimento_noticias")
+            data_str = data_ativo_sel.strftime('%d/%m/%Y') if data_ativo_sel else ""
+
+            if score_noticias is not None and classif_noticias:
+                badge_class = f"badge-{classif_noticias.lower()}"
+                st.markdown(
+                    f"**Data de Referência:** {data_str} &nbsp;|&nbsp; **Sentimento Médio da Mídia:** <span class='{badge_class}'>{classif_noticias.upper()} ({score_noticias:+.2f})</span>",
+                    unsafe_allow_html=True
+                )
+            elif data_str:
+                st.markdown(f"**Data de Referência:** {data_str}")
+
+            if noticias_ativo:
+                for n in noticias_ativo:
+                    sent_n = n.get("sentimento", "neutral").upper()
+                    badge_n = f"badge-{sent_n.lower()}"
+                    score_n = n.get("score", 0.0)
+                    titulo = n.get("titulo", "Sem título")
+                    url = n.get("url", "#")
+                    fonte = n.get("fonte", "Mídia")
+                    data_pub = n.get("data_publicacao", "")
+                    data_pub_str = f" • {data_pub}" if data_pub else ""
+
+                    st.markdown(f"""
+                    <div class='news-item'>
+                        <div style='display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;'>
+                            <a href='{url}' target='_blank' class='news-title'>🔗 {titulo}</a>
+                            <span class='{badge_n}' style='font-size: 0.72rem; padding: 2px 6px; white-space: nowrap;'>{sent_n} ({score_n:+.2f})</span>
+                        </div>
+                        <div class='news-meta'>
+                            Fonte: <b>{fonte}</b>{data_pub_str}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info(f"Nenhuma notícia registrada para {ticker_selecionado} na data {data_str}.")
+        else:
+            st.info(f"Nenhuma análise ou notícia registrada para {ticker_selecionado} na data selecionada.")
+
     with col_ia:
         st.subheader("🤖 Parecer de Mercado com IA Generativa")
 
-        # Busca histórico de análises para este ticker
-        analise_ativo = None
-        matches = pd.DataFrame()
-        if not df_analises.empty:
-            matches = df_analises[df_analises["ticker"] == ticker_selecionado]
-            if not matches.empty:
-                datas_ativo = sorted(matches["data_analise"].dt.date.unique(), reverse=True)
-                # Garante que a data sincronizada seja válida para o ativo
-                if st.session_state.get("sel_data_ativo_sync") not in datas_ativo:
-                    st.session_state["sel_data_ativo_sync"] = datas_ativo[0]
+        if not matches_ativo.empty:
+            idx_ativo = datas_ativo.index(data_ativo_sel) if data_ativo_sel in datas_ativo else 0
+            st.selectbox(
+                "📅 Selecione a Data do Cenário:",
+                options=datas_ativo,
+                index=idx_ativo,
+                format_func=lambda d: f"{d.strftime('%d/%m/%Y')} (Mais Recente)" if d == datas_ativo[0] else d.strftime("%d/%m/%Y"),
+                key="sel_data_ativo_sync",
+                on_change=sync_ativo_to_macro,
+                help="Escolha uma data para visualizar o parecer e os cenários gerados pela IA naquele dia."
+            )
 
-                idx_ativo = datas_ativo.index(st.session_state["sel_data_ativo_sync"])
-                data_ativo_sel = st.selectbox(
-                    "📅 Selecione a Data do Cenário:",
-                    options=datas_ativo,
-                    index=idx_ativo,
-                    format_func=lambda d: f"{d.strftime('%d/%m/%Y')} (Mais Recente)" if d == datas_ativo[0] else d.strftime("%d/%m/%Y"),
-                    key="sel_data_ativo_sync",
-                    on_change=sync_ativo_to_macro,
-                    help="Escolha uma data para visualizar o parecer e os cenários gerados pela IA naquele dia."
-                )
-                analise_ativo = matches[matches["data_analise"].dt.date == data_ativo_sel].iloc[0]
-
-        if analise_ativo is not None:
-            meta = analise_ativo["metadados_ia"]
-            if isinstance(meta, str):
-                meta = json.loads(meta)
-
-            sentimento = meta.get("sentimento", "neutral").upper()
+        if analise_ativo is not None and meta_ativo:
+            sentimento = meta_ativo.get("sentimento", "neutral").upper()
             classe_sent = f"badge-{sentimento.lower()}"
-            confianca = float(meta.get("confianca_score", 0.0))
-            risco = meta.get("risco_curto_prazo", "medio").upper()
+            confianca = float(meta_ativo.get("confianca_score", 0.0))
+            risco = meta_ativo.get("risco_curto_prazo", "medio").upper()
 
             st.markdown(f"""
             <div class='metric-card'>
@@ -504,7 +562,7 @@ else:
                     <span style='color: #848E9C; font-size: 0.85rem;'>Risco: <b>{risco}</b></span>
                 </div>
                 <div style='margin-bottom: 12px;'>
-                    {''.join([f"<span class='tag-driver'>#{d}</span>" for d in meta.get('drivers', [])])}
+                    {''.join([f"<span class='tag-driver'>#{d}</span>" for d in meta_ativo.get('drivers', [])])}
                 </div>
                 <p style='color: #D1D4DC; font-size: 0.95rem; line-height: 1.6;'>
                     {analise_ativo['roteiro_texto']}
@@ -516,7 +574,7 @@ else:
             """, unsafe_allow_html=True)
 
             # Tabela de Indicadores Quantitativos Grounded
-            ind_quant = meta.get("indicadores_quant", {})
+            ind_quant = meta_ativo.get("indicadores_quant", {})
             if ind_quant:
                 st.markdown("##### Indicadores Calculados pelo Motor Quantitativo")
                 st.dataframe(
@@ -531,35 +589,10 @@ else:
                     use_container_width=True
                 )
 
-            # Notícias & Sentimento da Mídia Grounded
-            noticias_ativo = meta.get("noticias_mercado", [])
-            if noticias_ativo:
-                st.markdown(f"##### Notícias & Sentimento da Mídia ({ticker_selecionado})")
-                score_noticias = meta.get("score_sentimento_noticias")
-                classif_noticias = meta.get("classificacao_sentimento_noticias")
-                if score_noticias is not None and classif_noticias:
-                    badge_class = f"badge-{classif_noticias.lower()}"
-                    st.markdown(f"**Score da Mídia:** <span class='{badge_class}'>{classif_noticias.upper()} ({score_noticias:+.2f})</span>", unsafe_allow_html=True)
-
-                for n in noticias_ativo:
-                    sent_n = n.get("sentimento", "neutral").upper()
-                    badge_n = f"badge-{sent_n.lower()}"
-                    score_n = n.get("score", 0.0)
-                    titulo = n.get("titulo", "Sem título")
-                    url = n.get("url", "#")
-                    fonte = n.get("fonte", "Mídia")
-                    data_pub = n.get("data_publicacao", "")
-                    data_str = f" • {data_pub}" if data_pub else ""
-
-                    st.markdown(f"""
-                    <div class='news-item'>
-                        <a href='{url}' target='_blank' class='news-title'>🔗 {titulo}</a>
-                        <div class='news-meta'>
-                            <span class='{badge_n}' style='font-size: 0.72rem; padding: 2px 6px;'>{sent_n} ({score_n:+.2f})</span>
-                            <span style='margin-left: 8px;'>Fonte: <b>{fonte}</b>{data_str}</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+            score_noticias = meta_ativo.get("score_sentimento_noticias")
+            classif_noticias = meta_ativo.get("classificacao_sentimento_noticias")
+            if score_noticias is not None and classif_noticias:
+                st.caption(f"Sentimento Médio das Notícias ({data_ativo_sel.strftime('%d/%m/%Y')}): **{classif_noticias.upper()} ({score_noticias:+.2f})** — matérias detalhadas exibidas abaixo do gráfico.")
         else:
             st.info(f"Nenhuma análise de IA registrada ainda para {ticker_selecionado}.")
 
