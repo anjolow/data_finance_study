@@ -223,6 +223,28 @@ with st.sidebar:
 st.title("Plataforma de Inteligência Quantitativa & IA de Mercado")
 st.markdown("Pipeline ETL de alta volumetria em PostgreSQL integrado com motor quantitativo e IA generativa.")
 
+# Sincronização bidirecional de datas entre Macro e Cenário do Ativo
+datas_disponiveis = sorted(df_analises["data_analise"].dt.date.unique(), reverse=True) if not df_analises.empty else []
+
+if "data_analise_sync" not in st.session_state and datas_disponiveis:
+    st.session_state["data_analise_sync"] = datas_disponiveis[0]
+
+if "sel_data_macro_sync" not in st.session_state and datas_disponiveis:
+    st.session_state["sel_data_macro_sync"] = datas_disponiveis[0]
+
+if "sel_data_ativo_sync" not in st.session_state and datas_disponiveis:
+    st.session_state["sel_data_ativo_sync"] = datas_disponiveis[0]
+
+def sync_macro_to_ativo():
+    nova_data = st.session_state["sel_data_macro_sync"]
+    st.session_state["data_analise_sync"] = nova_data
+    st.session_state["sel_data_ativo_sync"] = nova_data
+
+def sync_ativo_to_macro():
+    nova_data = st.session_state["sel_data_ativo_sync"]
+    st.session_state["data_analise_sync"] = nova_data
+    st.session_state["sel_data_macro_sync"] = nova_data
+
 # Busca análise Macro Geral (ticker IS NULL)
 analise_macro = None
 if not df_analises.empty:
@@ -233,11 +255,14 @@ if not df_analises.empty:
         with st.expander("🌐 **PANORAMA GERAL DO PREGÃO (Fechamento Macro com IA)**", expanded=True):
             col_m_info, col_m_date = st.columns([2.5, 1.5])
             with col_m_date:
+                idx_macro = datas_macro.index(st.session_state["sel_data_macro_sync"]) if st.session_state.get("sel_data_macro_sync") in datas_macro else 0
                 data_macro_sel = st.selectbox(
                     "📅 Data do Fechamento Macro:",
                     options=datas_macro,
+                    index=idx_macro,
                     format_func=lambda d: f"{d.strftime('%d/%m/%Y')} (Mais Recente)" if d == datas_macro[0] else d.strftime("%d/%m/%Y"),
-                    key="sel_data_macro_ia",
+                    key="sel_data_macro_sync",
+                    on_change=sync_macro_to_ativo,
                     help="Selecione a data para visualizar o fechamento macroeconômico daquele pregão."
                 )
 
@@ -393,11 +418,18 @@ else:
             matches = df_analises[df_analises["ticker"] == ticker_selecionado]
             if not matches.empty:
                 datas_ativo = sorted(matches["data_analise"].dt.date.unique(), reverse=True)
+                # Garante que a data sincronizada seja válida para o ativo
+                if st.session_state.get("sel_data_ativo_sync") not in datas_ativo:
+                    st.session_state["sel_data_ativo_sync"] = datas_ativo[0]
+
+                idx_ativo = datas_ativo.index(st.session_state["sel_data_ativo_sync"])
                 data_ativo_sel = st.selectbox(
                     "📅 Selecione a Data do Cenário:",
                     options=datas_ativo,
+                    index=idx_ativo,
                     format_func=lambda d: f"{d.strftime('%d/%m/%Y')} (Mais Recente)" if d == datas_ativo[0] else d.strftime("%d/%m/%Y"),
-                    key=f"sel_data_ativo_{ticker_selecionado}",
+                    key="sel_data_ativo_sync",
+                    on_change=sync_ativo_to_macro,
                     help="Escolha uma data para visualizar o parecer e os cenários gerados pela IA naquele dia."
                 )
                 analise_ativo = matches[matches["data_analise"].dt.date == data_ativo_sel].iloc[0]
@@ -446,35 +478,6 @@ else:
                     hide_index=True,
                     use_container_width=True
                 )
-
-            # Histórico de Cenários Anteriores
-            if len(matches) > 1:
-                with st.expander(f"📜 Histórico de Cenários Anteriores ({ticker_selecionado})"):
-                    st.caption("Evolução dos pareceres e projeções anteriores:")
-                    for _, row in matches.iterrows():
-                        d_str = row["data_analise"].strftime("%d/%m/%Y")
-                        m_ia = row["metadados_ia"]
-                        if isinstance(m_ia, str):
-                            m_ia = json.loads(m_ia)
-                        sent = m_ia.get("sentimento", "neutral").upper()
-                        conf = float(m_ia.get("confianca_score", 0.0)) * 100
-                        rsk = m_ia.get("risco_curto_prazo", "medio").upper()
-                        badge = f"badge-{sent.lower()}"
-                        ind = m_ia.get("indicadores_quant", {})
-                        preco_str = f" | Fechamento: R$ {ind.get('preco_fechamento', 0):.2f}" if "preco_fechamento" in ind else ""
-
-                        st.markdown(f"""
-                        <div style='background: #1E2329; border: 1px solid #2B313A; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px;'>
-                            <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;'>
-                                <b>📅 {d_str}</b>
-                                <span class='{badge}'>{sent}</span>
-                                <span style='font-size: 0.8rem; color: #848E9C;'>Confiança: <b>{conf:.0f}%</b> | Risco: <b>{rsk}</b>{preco_str}</span>
-                            </div>
-                            <p style='color: #D1D4DC; font-size: 0.85rem; margin: 0; line-height: 1.4;'>
-                                {row['roteiro_texto']}
-                            </p>
-                        </div>
-                        """, unsafe_allow_html=True)
         else:
             st.info(f"Nenhuma análise de IA registrada ainda para {ticker_selecionado}.")
 
