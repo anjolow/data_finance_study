@@ -31,20 +31,21 @@ Pipeline de Engenharia de Dados para ingestão, processamento quantitativo e ger
               └───────────┬───────────┘         │ (Leitura OHLCV Recente)
                           │                     │
                           ▼                     │
-           [ pipeline_analise_mercado.py ] ─────┘
-                          │
-         ┌────────────────┴────────────────┐
-         │  1. Motor Quantitativo:         │
-         │     SMA 9/21, RSI 14, Volume    │
-         │  2. Grounding com Gemini 3.8:   │
-         │     Roteiro Executivo + Sentim. │
-         │  3. Bulk Upsert JSONB           │
-         └────────────────┬────────────────┘
-                          ▼
-              ┌───────────────────────┐
-              │ Fato_Analise_Mercado  │
-              │ (GIN Index em JSONB)  │
-              └───────────────────────┘
+ [ RSS News (B3 / Macro) ] ──► [ pipeline_analise_mercado.py ] ─────┘
+                                       │
+                      ┌────────────────┴────────────────┐
+                      │  1. Motor Quantitativo:         │
+                      │     SMA 9/21, RSI 14, Volume    │
+                      │  2. Scoring Sentimento Notícias │
+                      │  3. Grounding com Gemini 3.8:   │
+                      │     Roteiro Executivo + Sentim. │
+                      │  4. Bulk Upsert JSONB           │
+                      └────────────────┬────────────────┘
+                                       ▼
+                           ┌───────────────────────┐
+                           │ Fato_Analise_Mercado  │
+                           │ (GIN Index em JSONB)  │
+                           └───────────────────────┘
 ```
 
 ---
@@ -64,12 +65,20 @@ Pipeline de Engenharia de Dados para ingestão, processamento quantitativo e ger
    - **Abordagem B (Enriquecimento com IA Gemini 3.8 Flash):** O modelo recebe métricas exatas (*grounding*) e gera pareceres em linguagem natural (`roteiro_texto`) e metadados estruturados (`metadados_ia`), eliminando qualquer risco de alucinação de preços.
    - **Panorama Macro (`ticker = NULL`):** Visão consolidada do pregão do dia sintetizando a cesta de ativos monitorados.
 
-4. **Colunas Semiestruturadas e Índices GIN:**
-   - O campo `metadados_ia` armazena o payload da IA e indicadores técnicos em formato `JSONB`.
+4. **Inteligência de Mercado e Extração de Notícias em Tempo Real:**
+   - **Ingestão RSS B3 & Macro:** Extração em tempo real de manchetes, fontes e links dos principais veículos financeiros (InfoMoney, Valor Econômico, Estadão E-Investidor), contornando limitações de planos pagos em APIs fechadas.
+   - **Scoring Contínuo de Sentimento (-1.0 a +1.0):** Cada notícia é avaliada individualmente pelo Gemini 3.8 Flash, recebendo score numérico contínuo e classificação categórica (`Bullish`, `Bearish`, `Neutral`), além da consolidação de um termômetro geral de mídia no pregão.
+
+5. **Colunas Semiestruturadas e Índices GIN:**
+   - O campo `metadados_ia` armazena o payload da IA, notícias avaliadas e indicadores técnicos em formato `JSONB`.
    - Um índice `GIN` acelera consultas complexas por propriedades aninhadas em milissegundos (ex: busca por ativos com sentimento `bullish` ou `RSI > 70`).
 
-5. **Infraestrutura em Nuvem & Compatibilidade IPv4:**
+6. **Infraestrutura em Nuvem & Compatibilidade IPv4:**
    - Conexão segura com banco gerenciado no Supabase via **Connection Pooler IPv4** (`aws-0-us-west-2.pooler.supabase.com`) e `sslmode="require"`, permitindo que os runners do GitHub Actions se conectem sem restrições de rede.
+
+7. **Dashboard Interativo em Streamlit com Sincronização Temporal:**
+   - Sincronização bidirecional de datas entre a análise macroeconômica e os pareceres individuais.
+   - Exibição de notícias do pregão com links de leitura externa e badges temáticos de sentimento.
 
 ---
 
@@ -100,7 +109,7 @@ Registro de relatórios e metadados analíticos em formato semiestruturado:
 - `ticker` (FK -> `Dim_Ativo.ticker`, `NULL` para fechamento macro de mercado)
 - `fonte_origem` (VARCHAR(100))
 - `roteiro_texto` (TEXT)
-- `metadados_ia` (JSONB com sentimento, confiança, risco, drivers e indicadores)
+- `metadados_ia` (JSONB com sentimento, confiança, risco, drivers, indicadores quantitativos, notícias da mídia e score de sentimento)
 - **Índice GIN:** `idx_fato_analise_json`
 - **Índice de Idempotência:** `idx_fato_analise_idempotencia (COALESCE(ticker, 'GERAL'), data_analise, fonte_origem)`
 
@@ -170,6 +179,13 @@ WHERE ticker IS NOT NULL
 SELECT data_analise, roteiro_texto, metadados_ia->'resumo_estatistico' as stats
 FROM Fato_Analise_Mercado
 WHERE ticker IS NULL;
+
+-- 4. Filtrar análises com sentimento positivo expressivo no noticiário (> 0.20)
+SELECT ticker, data_analise, 
+       metadados_ia->>'classificacao_sentimento_noticias' as sentimento_midia,
+       metadados_ia->>'score_sentimento_noticias' as score_midia
+FROM Fato_Analise_Mercado
+WHERE (metadados_ia->>'score_sentimento_noticias')::float > 0.20;
 ```
 
 ---
