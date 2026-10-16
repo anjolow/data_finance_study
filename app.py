@@ -70,6 +70,29 @@ st.markdown("""
         margin-right: 6px;
         display: inline-block;
     }
+    .news-item {
+        background-color: #1E222D;
+        border: 1px solid #2A2E39;
+        border-left: 3px solid #3875F6;
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin-bottom: 8px;
+    }
+    .news-title {
+        color: #E0E3EB !important;
+        font-size: 0.88rem;
+        font-weight: 600;
+        text-decoration: none;
+    }
+    .news-title:hover {
+        color: #2962FF !important;
+        text-decoration: underline;
+    }
+    .news-meta {
+        color: #848E9C;
+        font-size: 0.78rem;
+        margin-top: 5px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -289,6 +312,35 @@ if not df_analises.empty:
             st.markdown(f"**Data de Referência:** {analise_macro['data_analise'].strftime('%d/%m/%Y')} | **Fonte:** *{analise_macro['fonte_origem']}*")
             st.markdown(f"> *\"{analise_macro['roteiro_texto']}\"*")
 
+            noticias_macro = meta_macro.get("noticias_mercado", [])
+            if noticias_macro:
+                st.markdown("##### Notícias & Sentimento da Mídia (Mercado Geral)")
+                score_macro = meta_macro.get("score_sentimento_noticias")
+                classif_macro = meta_macro.get("classificacao_sentimento_noticias")
+                if score_macro is not None and classif_macro:
+                    badge_class = f"badge-{classif_macro.lower()}"
+                    st.markdown(f"**Score da Mídia:** <span class='{badge_class}'>{classif_macro.upper()} ({score_macro:+.2f})</span>", unsafe_allow_html=True)
+
+                for n in noticias_macro:
+                    sent_n = n.get("sentimento", "neutral").upper()
+                    badge_n = f"badge-{sent_n.lower()}"
+                    score_n = n.get("score", 0.0)
+                    titulo = n.get("titulo", "Sem título")
+                    url = n.get("url", "#")
+                    fonte = n.get("fonte", "Mídia")
+                    data_pub = n.get("data_publicacao", "")
+                    data_str = f" • {data_pub}" if data_pub else ""
+
+                    st.markdown(f"""
+                    <div class='news-item'>
+                        <a href='{url}' target='_blank' class='news-title'>🔗 {titulo}</a>
+                        <div class='news-meta'>
+                            <span class='{badge_n}' style='font-size: 0.72rem; padding: 2px 6px;'>{sent_n} ({score_n:+.2f})</span>
+                            <span style='margin-left: 8px;'>Fonte: <b>{fonte}</b>{data_str}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
 st.divider()
 
 
@@ -478,6 +530,36 @@ else:
                     hide_index=True,
                     use_container_width=True
                 )
+
+            # Notícias & Sentimento da Mídia Grounded
+            noticias_ativo = meta.get("noticias_mercado", [])
+            if noticias_ativo:
+                st.markdown(f"##### Notícias & Sentimento da Mídia ({ticker_selecionado})")
+                score_noticias = meta.get("score_sentimento_noticias")
+                classif_noticias = meta.get("classificacao_sentimento_noticias")
+                if score_noticias is not None and classif_noticias:
+                    badge_class = f"badge-{classif_noticias.lower()}"
+                    st.markdown(f"**Score da Mídia:** <span class='{badge_class}'>{classif_noticias.upper()} ({score_noticias:+.2f})</span>", unsafe_allow_html=True)
+
+                for n in noticias_ativo:
+                    sent_n = n.get("sentimento", "neutral").upper()
+                    badge_n = f"badge-{sent_n.lower()}"
+                    score_n = n.get("score", 0.0)
+                    titulo = n.get("titulo", "Sem título")
+                    url = n.get("url", "#")
+                    fonte = n.get("fonte", "Mídia")
+                    data_pub = n.get("data_publicacao", "")
+                    data_str = f" • {data_pub}" if data_pub else ""
+
+                    st.markdown(f"""
+                    <div class='news-item'>
+                        <a href='{url}' target='_blank' class='news-title'>🔗 {titulo}</a>
+                        <div class='news-meta'>
+                            <span class='{badge_n}' style='font-size: 0.72rem; padding: 2px 6px;'>{sent_n} ({score_n:+.2f})</span>
+                            <span style='margin-left: 8px;'>Fonte: <b>{fonte}</b>{data_str}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
         else:
             st.info(f"Nenhuma análise de IA registrada ainda para {ticker_selecionado}.")
 

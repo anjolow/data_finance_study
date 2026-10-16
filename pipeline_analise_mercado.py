@@ -29,6 +29,9 @@ import json
 import logging
 from datetime import datetime, date
 from decimal import Decimal
+import urllib.parse
+import xml.etree.ElementTree as ET
+from email.utils import parsedate_to_datetime
 import requests
 import psycopg2
 from psycopg2.extras import execute_values, Json
@@ -209,17 +212,87 @@ def calcular_indicadores_tecnicos(historico: list[dict]) -> dict:
 
 
 # ==============================================================================
+# 1.1 EXTRATOR DE NOTÍCIAS FINANCEIRAS B3 (FEEDS RSS EM TEMPO REAL)
+# ==============================================================================
+
+def buscar_noticias_b3(termo_busca: str, limite: int = 3) -> list[dict]:
+    """
+    Extrai notícias financeiras recentes em tempo real via feeds RSS públicos (B3 / Mercado Brasileiro).
+    Retorna lista de dicionários contendo:
+    - titulo: Manchete limpa
+    - fonte: Veículo de comunicação (ex: InfoMoney, Valor Econômico, Estadão)
+    - url: Link para a matéria original
+    - data_publicacao: Data/hora formatada
+    """
+    noticias = []
+    try:
+        query = urllib.parse.quote(f"{termo_busca} mercado financeiro")
+        url = f"https://news.google.com/rss/search?q={query}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            logger.warning("Feed de notícias retornou HTTP %d para '%s'.", resp.status_code, termo_busca)
+            return []
+
+        root = ET.fromstring(resp.content)
+        items = root.findall("./channel/item")
+
+        for item in items[:limite]:
+            titulo_raw = item.find("title").text if item.find("title") is not None else ""
+            link = item.find("link").text if item.find("link") is not None else ""
+            pub_date_raw = item.find("pubDate").text if item.find("pubDate") is not None else ""
+            source_el = item.find("source")
+            fonte = source_el.text if source_el is not None and source_el.text else "Mercado"
+
+            if " - " in titulo_raw:
+                partes = titulo_raw.rsplit(" - ", 1)
+                titulo = partes[0].strip()
+                if fonte == "Mercado":
+                    fonte = partes[1].strip()
+            else:
+                titulo = titulo_raw.strip()
+
+            data_pub = ""
+            if pub_date_raw:
+                try:
+                    dt = parsedate_to_datetime(pub_date_raw)
+                    data_pub = dt.strftime("%d/%m/%Y %H:%M")
+                except Exception:
+                    data_pub = pub_date_raw[:16]
+
+            noticias.append({
+                "titulo": titulo,
+                "fonte": fonte,
+                "url": link,
+                "data_publicacao": data_pub
+            })
+
+        logger.info("Coletadas %d notícias para '%s'.", len(noticias), termo_busca)
+    except Exception as err:
+        logger.warning("Falha ao coletar notícias RSS para '%s': %s", termo_busca, err)
+
+    return noticias
+
+
+# ==============================================================================
 # 2. ENRIQUECIMENTO COM IA GENERATIVA (ABORDAGEM B - GEMINI 3.8 FLASH)
 # ==============================================================================
 
-def gerar_analise_ia_gemini(ticker: str, meta_ativo: dict, metricas: dict) -> tuple[str, dict]:
+def gerar_analise_ia_gemini(ticker: str, meta_ativo: dict, metricas: dict, noticias: list[dict] = None) -> tuple[str, dict]:
     """
-    Envia as metricas quantitativas exatas para a API do Gemini com schema JSON estruturado.
-    Retorna uma tupla (roteiro_texto: str, metadados_ia: dict).
+    Envia as metricas quantitativas exatas e as manchetes recentes para a API do Gemini.
+    Retorna uma tupla (roteiro_texto: str, metadados_ia: dict) com scoring de sentimento e notícias.
     """
     if not GEMINI_API_KEY:
         logger.warning("GEMINI_API_KEY nao configurada. Utilizando sintetizador analitico interno.")
-        return _gerar_analise_fallback(ticker, meta_ativo, metricas)
+        return _gerar_analise_fallback(ticker, meta_ativo, metricas, noticias)
+
+    bloco_noticias = ""
+    if noticias:
+        itens_txt = [f"{i}. [{n['fonte']}] \"{n['titulo']}\"" for i, n in enumerate(noticias, 1)]
+        bloco_noticias = "\nNOTÍCIAS E FATOS RELEVANTES RECENTES:\n" + "\n".join(itens_txt) + "\n"
 
     prompt = f"""
 Você é um Engenheiro de Dados e Analista Quantitativo sênior do mercado financeiro brasileiro.
@@ -234,15 +307,21 @@ MÉTRICAS QUANTITATIVAS:
 - IFR / RSI (14 períodos): {metricas['rsi_14']:.2f} ({metricas['condicao_rsi']})
 - Volume vs Média 20 períodos: {metricas['volume_ratio']:.2f}x
 - Tendência Técnica Detectada: {metricas['tendencia']}
-
+{bloco_noticias}
 INSTRUÇÕES OBRIGATÓRIAS:
 Gere uma resposta em JSON com duas propriedades:
-1. "roteiro_texto": Texto fluido, analítico e formal em português (2 parágrafos concisos) descrevendo o comportamento do papel no pregão, citando os números de fechamento, o comportamento das médias móveis, suporte/resistência sugerido pelos indicadores e a pressão de volume.
+1. "roteiro_texto": Texto fluido, analítico e formal em português (2 parágrafos concisos) descrevendo o comportamento do papel no pregão. Correlacione os números técnicos com os fatos e catalisadores noticiosos listados (se houver), citando suportes, resistências e pressão compradora/vendedora.
 2. "metadados_ia": Um objeto JSON contendo:
    - "sentimento": "bullish" (alta), "bearish" (baixa) ou "neutral" (neutro).
    - "confianca_score": número float entre 0.0 e 1.0.
    - "risco_curto_prazo": "baixo", "medio" ou "alto".
-   - "drivers": lista com 3 a 5 palavras-chave resumindo os fatores determinantes (ex: ["volume_acima_media", "cruzamento_alta"]).
+   - "drivers": lista com 3 a 5 palavras-chave resumindo os fatores determinantes (ex: ["volume_acima_media", "recorde_producao"]).
+   - "score_sentimento_noticias": float entre -1.0 e +1.0 representando o sentimento médio ponderado das notícias sobre o ativo (0.0 se neutro/sem notícias).
+   - "classificacao_sentimento_noticias": "Bullish", "Bearish" ou "Neutral".
+   - "noticias_avaliadas": lista de objetos para cada notícia fornecida contendo:
+       * "indice": número inteiro (1, 2, ...) correspondente à notícia fornecida
+       * "score_sentimento": float entre -1.0 e +1.0
+       * "label_sentimento": "Bullish", "Bearish" ou "Neutral"
 """
 
     payload = {
@@ -280,15 +359,35 @@ Gere uma resposta em JSON com duas propriedades:
             "tendencia": metricas["tendencia"]
         }
 
-        logger.info("Analise gerada com sucesso via Gemini para %s [Sentimento: %s].", ticker, metadados.get("sentimento"))
+        # Mescla o scoring do Gemini com a estrutura das notícias coletadas
+        noticias_avaliadas = metadados.pop("noticias_avaliadas", [])
+        noticias_finais = []
+        for i, n in enumerate(noticias or [], 1):
+            avaliacao = next((a for a in noticias_avaliadas if a.get("indice") == i), {})
+            noticias_finais.append({
+                "titulo": n["titulo"],
+                "fonte": n["fonte"],
+                "url": n["url"],
+                "data_publicacao": n["data_publicacao"],
+                "score_sentimento": float(avaliacao.get("score_sentimento", 0.0)),
+                "label_sentimento": avaliacao.get("label_sentimento", "Neutral")
+            })
+
+        metadados["noticias_mercado"] = noticias_finais
+        if "score_sentimento_noticias" not in metadados:
+            metadados["score_sentimento_noticias"] = 0.0
+        if "classificacao_sentimento_noticias" not in metadados:
+            metadados["classificacao_sentimento_noticias"] = "Neutral"
+
+        logger.info("Analise gerada com sucesso via Gemini para %s [Sentimento: %s | Notícias: %d].", ticker, metadados.get("sentimento"), len(noticias_finais))
         return roteiro_texto, metadados
 
     except Exception as err:
         logger.warning("Falha na chamada da API do Gemini para %s: %s. Utilizando contingencia estruturada.", ticker, err)
-        return _gerar_analise_fallback(ticker, meta_ativo, metricas)
+        return _gerar_analise_fallback(ticker, meta_ativo, metricas, noticias)
 
 
-def _gerar_analise_fallback(ticker: str, meta_ativo: dict, metricas: dict) -> tuple[str, dict]:
+def _gerar_analise_fallback(ticker: str, meta_ativo: dict, metricas: dict, noticias: list[dict] = None) -> tuple[str, dict]:
     """
     Gera relatorio analitico estruturado de contingencia deterministico caso
     haja falha de rede ou indisponibilidade da API externa.
@@ -307,6 +406,21 @@ def _gerar_analise_fallback(ticker: str, meta_ativo: dict, metricas: dict) -> tu
         f"sinalizam patamares relevantes de suporte dinâmico no curto prazo."
     )
 
+    if noticias:
+        roteiro += f"\n\nNo radar de notícias, o papel foi impactado por matérias como: \"{noticias[0]['titulo']}\" ({noticias[0]['fonte']})."
+
+    noticias_finais = [
+        {
+            "titulo": n["titulo"],
+            "fonte": n["fonte"],
+            "url": n["url"],
+            "data_publicacao": n["data_publicacao"],
+            "score_sentimento": 0.0,
+            "label_sentimento": "Neutral"
+        }
+        for n in (noticias or [])
+    ]
+
     metadados = {
         "sentimento": sentimento,
         "confianca_score": confianca,
@@ -324,15 +438,18 @@ def _gerar_analise_fallback(ticker: str, meta_ativo: dict, metricas: dict) -> tu
             "rsi_14": metricas["rsi_14"],
             "volume_ratio": metricas["volume_ratio"],
             "tendencia": metricas["tendencia"]
-        }
+        },
+        "score_sentimento_noticias": 0.0,
+        "classificacao_sentimento_noticias": "Neutral",
+        "noticias_mercado": noticias_finais
     }
     return roteiro, metadados
 
 
-def gerar_analise_macro_mercado(data_pregao: date, analises_ativos: list[dict]) -> tuple[str, dict]:
+def gerar_analise_macro_mercado(data_pregao: date, analises_ativos: list[dict], noticias_macro: list[dict] = None) -> tuple[str, dict]:
     """
     Gera um parecer consolidado do panorama geral de mercado (ticker = NULL),
-    sintetizando o comportamento conjunto das acoes monitoradas no dia.
+    sintetizando o comportamento conjunto das acoes monitoradas no dia e manchetes macro.
     """
     if not analises_ativos:
         return "", {}
@@ -350,6 +467,11 @@ def gerar_analise_macro_mercado(data_pregao: date, analises_ativos: list[dict]) 
         destaques.append(f"{a['ticker']}: {a['metricas']['variacao_dia_pct']:+.2f}% (RSI {a['metricas']['rsi_14']:.1f})")
     destaques_str = ", ".join(destaques)
 
+    bloco_noticias = ""
+    if noticias_macro:
+        itens_txt = [f"{i}. [{n['fonte']}] \"{n['titulo']}\"" for i, n in enumerate(noticias_macro, 1)]
+        bloco_noticias = "\nNOTÍCIAS E MANCHETES MACROECONÔMICAS RECENTES:\n" + "\n".join(itens_txt) + "\n"
+
     if GEMINI_API_KEY:
         prompt = f"""
 Você é um Estrategista-Chefe de Mercado Financeiro brasileiro.
@@ -357,14 +479,17 @@ Escreva o 'Panorama Geral de Fechamento de Mercado' para a data {data_pregao}, a
 - Total de ações analisadas: {total} (Altas: {altas}, Baixas: {baixas}, Neutras: {neutras})
 - Retorno Médio da Cesta: {media_var:+.2f}%
 - Destaques individuais: {destaques_str}
-
+{bloco_noticias}
 Gere uma resposta em JSON com:
-1. "roteiro_texto": Parecer macroeconômico formal e executivo (2 parágrafos) sintetizando o tom geral do pregão, apetite a risco, comportamento setorial e perspectivas para os próximos pregões.
+1. "roteiro_texto": Parecer macroeconômico formal e executivo (2 parágrafos) sintetizando o tom geral do pregão, apetite a risco, comportamento setorial, repercussão das manchetes macro (se houver) e perspectivas para os próximos pregões.
 2. "metadados_ia": Objeto JSON com:
    - "sentimento": "{sentimento_macro}"
    - "confianca_score": 0.90
    - "apetite_a_risco": "moderado"
    - "palavras_chave": ["fechamento_mercado", "apetite_risco", "bolsa_brasileira"]
+   - "score_sentimento_noticias": float entre -1.0 e +1.0 representando o sentimento médio do noticiário macroeconômico
+   - "classificacao_sentimento_noticias": "Bullish", "Bearish" ou "Neutral"
+   - "noticias_avaliadas": lista de objetos com "indice", "score_sentimento", "label_sentimento"
 """
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -383,7 +508,26 @@ Gere uma resposta em JSON com:
                 "baixas": baixas,
                 "retorno_medio_cesta_pct": media_var
             }
-            logger.info("Panorama Macro de Mercado gerado via Gemini com sucesso.")
+
+            noticias_avaliadas = meta.pop("noticias_avaliadas", [])
+            noticias_finais = []
+            for i, n in enumerate(noticias_macro or [], 1):
+                avaliacao = next((a for a in noticias_avaliadas if a.get("indice") == i), {})
+                noticias_finais.append({
+                    "titulo": n["titulo"],
+                    "fonte": n["fonte"],
+                    "url": n["url"],
+                    "data_publicacao": n["data_publicacao"],
+                    "score_sentimento": float(avaliacao.get("score_sentimento", 0.0)),
+                    "label_sentimento": avaliacao.get("label_sentimento", "Neutral")
+                })
+            meta["noticias_mercado"] = noticias_finais
+            if "score_sentimento_noticias" not in meta:
+                meta["score_sentimento_noticias"] = 0.0
+            if "classificacao_sentimento_noticias" not in meta:
+                meta["classificacao_sentimento_noticias"] = "Neutral"
+
+            logger.info("Panorama Macro de Mercado gerado via Gemini com sucesso [Notícias Macro: %d].", len(noticias_finais))
             return roteiro, meta
         except Exception as err:
             logger.warning("Falha ao gerar panorama macro via Gemini: %s. Utilizando sintese interna.", err)
@@ -397,6 +541,21 @@ Gere uma resposta em JSON com:
         f"Para as próximas sessões, o mercado mantém atenção aos patamares de suporte e resistência delineados pelas médias móveis, "
         f"com operadores monitorando a continuidade do fluxo e liquidez dos papéis líderes."
     )
+    if noticias_macro:
+        roteiro += f"\n\nNo panorama de notícias, o mercado repercutiu: \"{noticias_macro[0]['titulo']}\" ({noticias_macro[0]['fonte']})."
+
+    noticias_finais = [
+        {
+            "titulo": n["titulo"],
+            "fonte": n["fonte"],
+            "url": n["url"],
+            "data_publicacao": n["data_publicacao"],
+            "score_sentimento": 0.0,
+            "label_sentimento": "Neutral"
+        }
+        for n in (noticias_macro or [])
+    ]
+
     meta = {
         "sentimento": sentimento_macro,
         "confianca_score": 0.85,
@@ -407,7 +566,10 @@ Gere uma resposta em JSON com:
             "altas": altas,
             "baixas": baixas,
             "retorno_medio_cesta_pct": media_var
-        }
+        },
+        "score_sentimento_noticias": 0.0,
+        "classificacao_sentimento_noticias": "Neutral",
+        "noticias_mercado": noticias_finais
     }
     return roteiro, meta
 
@@ -486,7 +648,7 @@ def executar_pipeline_analise():
         analises_coletadas = []
         data_referencia = None
 
-        # 2. Processamento individual por ativo (Abordagem C + Abordagem B)
+        # 2. Processamento individual por ativo (Abordagem C + Abordagem B + Notícias B3)
         for ticker, nome, tipo, setor in ativos:
             meta_ativo = {"nome": nome, "tipo": tipo, "setor": setor}
             historico = buscar_historico_cotacoes(conn, ticker, limite=30)
@@ -499,8 +661,12 @@ def executar_pipeline_analise():
             metricas = calcular_indicadores_tecnicos(historico)
             data_referencia = metricas["data_pregao"]
 
+            # Extração de notícias B3 em tempo real para o ativo
+            termo_noticia = f"{ticker} {nome}"
+            noticias_ativo = buscar_noticias_b3(termo_noticia, limite=3)
+
             # Abordagem B: IA Generativa Gemini
-            roteiro, metadados = gerar_analise_ia_gemini(ticker, meta_ativo, metricas)
+            roteiro, metadados = gerar_analise_ia_gemini(ticker, meta_ativo, metricas, noticias=noticias_ativo)
 
             registros_para_banco.append((
                 metricas["data_pregao"],
@@ -520,7 +686,8 @@ def executar_pipeline_analise():
         # 3. Analise Consolidada do Panorama Geral de Mercado (ticker = NULL)
         if analises_coletadas and data_referencia:
             logger.info("Gerando Panorama Macro de Mercado para a data %s...", data_referencia)
-            roteiro_macro, meta_macro = gerar_analise_macro_mercado(data_referencia, analises_coletadas)
+            noticias_macro = buscar_noticias_b3("fechamento Ibovespa mercado financeiro acoes B3", limite=4)
+            roteiro_macro, meta_macro = gerar_analise_macro_mercado(data_referencia, analises_coletadas, noticias_macro=noticias_macro)
             registros_para_banco.append((
                 data_referencia,
                 None,  # ticker = NULL conforme modelagem dimensional para o mercado geral
