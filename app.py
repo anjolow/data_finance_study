@@ -184,6 +184,7 @@ with st.sidebar:
     st.divider()
 
     df_ativos = carregar_dim_ativos()
+    df_analises = carregar_analises()
 
     if not df_ativos.empty:
         opcoes_tickers = df_ativos["ticker"].tolist()
@@ -193,7 +194,8 @@ with st.sidebar:
             index=0
         )
         ativo_info = df_ativos[df_ativos["ticker"] == ticker_selecionado].iloc[0]
-        st.info(f"**{ativo_info['nome_empresa']}**\n\nSetor: {ativo_info['setor']}\nTipo: {ativo_info['tipo_ativo']}")
+        total_analises_ticker = len(df_analises[df_analises["ticker"] == ticker_selecionado]) if not df_analises.empty else 0
+        st.info(f"**{ativo_info['nome_empresa']}**\n\nSetor: {ativo_info['setor']}\nTipo: {ativo_info['tipo_ativo']}\n\n🤖 *{total_analises_ticker} pareceres de IA no histórico*")
     else:
         ticker_selecionado = "PETR4"
         st.warning("Nenhum ativo encontrado em Dim_Ativo.")
@@ -221,37 +223,46 @@ with st.sidebar:
 st.title("Plataforma de Inteligência Quantitativa & IA de Mercado")
 st.markdown("Pipeline ETL de alta volumetria em PostgreSQL integrado com motor quantitativo e IA generativa.")
 
-df_analises = carregar_analises()
-
 # Busca análise Macro Geral (ticker IS NULL)
 analise_macro = None
 if not df_analises.empty:
     macro_matches = df_analises[df_analises["ticker"].isna()]
     if not macro_matches.empty:
-        analise_macro = macro_matches.iloc[0]
+        datas_macro = sorted(macro_matches["data_analise"].dt.date.unique(), reverse=True)
 
-if analise_macro is not None:
-    meta_macro = analise_macro["metadados_ia"]
-    if isinstance(meta_macro, str):
-        meta_macro = json.loads(meta_macro)
+        with st.expander("🌐 **PANORAMA GERAL DO PREGÃO (Fechamento Macro com IA)**", expanded=True):
+            col_m_info, col_m_date = st.columns([2.5, 1.5])
+            with col_m_date:
+                data_macro_sel = st.selectbox(
+                    "📅 Data do Fechamento Macro:",
+                    options=datas_macro,
+                    format_func=lambda d: f"{d.strftime('%d/%m/%Y')} (Mais Recente)" if d == datas_macro[0] else d.strftime("%d/%m/%Y"),
+                    key="sel_data_macro_ia",
+                    help="Selecione a data para visualizar o fechamento macroeconômico daquele pregão."
+                )
 
-    sentimento_macro = meta_macro.get("sentimento", "neutral").upper()
-    classe_badge = f"badge-{sentimento_macro.lower()}"
-    stats = meta_macro.get("resumo_estatistico", {})
+            analise_macro = macro_matches[macro_matches["data_analise"].dt.date == data_macro_sel].iloc[0]
 
-    with st.expander("🌐 **PANORAMA GERAL DO PREGÃO (Fechamento Macro com IA)**", expanded=True):
-        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-        with col_m1:
-            st.markdown(f"**Sentimento do Mercado:** <br><span class='{classe_badge}'>{sentimento_macro}</span>", unsafe_allow_html=True)
-        with col_m2:
-            st.metric("Retorno Médio da Cesta", f"{stats.get('retorno_medio_cesta_pct', 0.0):+.2f}%")
-        with col_m3:
-            st.metric("Balanço de Ações", f"{stats.get('altas', 0)} Altas / {stats.get('baixas', 0)} Baixas")
-        with col_m4:
-            st.metric("Apetite a Risco", meta_macro.get("apetite_a_risco", "Moderado").capitalize())
+            meta_macro = analise_macro["metadados_ia"]
+            if isinstance(meta_macro, str):
+                meta_macro = json.loads(meta_macro)
 
-        st.markdown(f"**Data de Referência:** {analise_macro['data_analise'].strftime('%d/%m/%Y')} | **Fonte:** *{analise_macro['fonte_origem']}*")
-        st.markdown(f"> *\"{analise_macro['roteiro_texto']}\"*")
+            sentimento_macro = meta_macro.get("sentimento", "neutral").upper()
+            classe_badge = f"badge-{sentimento_macro.lower()}"
+            stats = meta_macro.get("resumo_estatistico", {})
+
+            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+            with col_m1:
+                st.markdown(f"**Sentimento do Mercado:** <br><span class='{classe_badge}'>{sentimento_macro}</span>", unsafe_allow_html=True)
+            with col_m2:
+                st.metric("Retorno Médio da Cesta", f"{stats.get('retorno_medio_cesta_pct', 0.0):+.2f}%")
+            with col_m3:
+                st.metric("Balanço de Ações", f"{stats.get('altas', 0)} Altas / {stats.get('baixas', 0)} Baixas")
+            with col_m4:
+                st.metric("Apetite a Risco", meta_macro.get("apetite_a_risco", "Moderado").capitalize())
+
+            st.markdown(f"**Data de Referência:** {analise_macro['data_analise'].strftime('%d/%m/%Y')} | **Fonte:** *{analise_macro['fonte_origem']}*")
+            st.markdown(f"> *\"{analise_macro['roteiro_texto']}\"*")
 
 st.divider()
 
@@ -375,12 +386,21 @@ else:
     with col_ia:
         st.subheader("🤖 Parecer de Mercado com IA Generativa")
 
-        # Busca a análise mais recente para este ticker
+        # Busca histórico de análises para este ticker
         analise_ativo = None
+        matches = pd.DataFrame()
         if not df_analises.empty:
             matches = df_analises[df_analises["ticker"] == ticker_selecionado]
             if not matches.empty:
-                analise_ativo = matches.iloc[0]
+                datas_ativo = sorted(matches["data_analise"].dt.date.unique(), reverse=True)
+                data_ativo_sel = st.selectbox(
+                    "📅 Selecione a Data do Cenário:",
+                    options=datas_ativo,
+                    format_func=lambda d: f"{d.strftime('%d/%m/%Y')} (Mais Recente)" if d == datas_ativo[0] else d.strftime("%d/%m/%Y"),
+                    key=f"sel_data_ativo_{ticker_selecionado}",
+                    help="Escolha uma data para visualizar o parecer e os cenários gerados pela IA naquele dia."
+                )
+                analise_ativo = matches[matches["data_analise"].dt.date == data_ativo_sel].iloc[0]
 
         if analise_ativo is not None:
             meta = analise_ativo["metadados_ia"]
@@ -426,6 +446,35 @@ else:
                     hide_index=True,
                     use_container_width=True
                 )
+
+            # Histórico de Cenários Anteriores
+            if len(matches) > 1:
+                with st.expander(f"📜 Histórico de Cenários Anteriores ({ticker_selecionado})"):
+                    st.caption("Evolução dos pareceres e projeções anteriores:")
+                    for _, row in matches.iterrows():
+                        d_str = row["data_analise"].strftime("%d/%m/%Y")
+                        m_ia = row["metadados_ia"]
+                        if isinstance(m_ia, str):
+                            m_ia = json.loads(m_ia)
+                        sent = m_ia.get("sentimento", "neutral").upper()
+                        conf = float(m_ia.get("confianca_score", 0.0)) * 100
+                        rsk = m_ia.get("risco_curto_prazo", "medio").upper()
+                        badge = f"badge-{sent.lower()}"
+                        ind = m_ia.get("indicadores_quant", {})
+                        preco_str = f" | Fechamento: R$ {ind.get('preco_fechamento', 0):.2f}" if "preco_fechamento" in ind else ""
+
+                        st.markdown(f"""
+                        <div style='background: #1E2329; border: 1px solid #2B313A; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px;'>
+                            <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;'>
+                                <b>📅 {d_str}</b>
+                                <span class='{badge}'>{sent}</span>
+                                <span style='font-size: 0.8rem; color: #848E9C;'>Confiança: <b>{conf:.0f}%</b> | Risco: <b>{rsk}</b>{preco_str}</span>
+                            </div>
+                            <p style='color: #D1D4DC; font-size: 0.85rem; margin: 0; line-height: 1.4;'>
+                                {row['roteiro_texto']}
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
         else:
             st.info(f"Nenhuma análise de IA registrada ainda para {ticker_selecionado}.")
 
