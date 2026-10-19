@@ -6,6 +6,7 @@ Engenharia de Dados & Finanças
 
 import os
 import json
+import warnings
 from datetime import datetime
 import pandas as pd
 import psycopg2
@@ -13,6 +14,9 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 from dotenv import load_dotenv
+
+# Suprime aviso informativo do pandas sobre conexões diretas DBAPI2 (psycopg2) sem SQLAlchemy
+warnings.filterwarnings("ignore", message=".*pandas only supports SQLAlchemy connectable.*", category=UserWarning)
 
 # -----------------------------------------------------------------------------
 # 1. CONFIGURAÇÃO DA PÁGINA E ESTILO VISUAL
