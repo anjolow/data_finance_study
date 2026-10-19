@@ -485,7 +485,7 @@ else:
             xaxis_rangeslider_visible=False,
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1.0, font=dict(size=11))
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         # ---------------------------------------------------------------------
         # Notícias do Dia do Ativo Selecionado (Abaixo dos Gráficos)
@@ -586,7 +586,7 @@ else:
                         {"Indicador": "Diagnóstico Técnico", "Valor": ind_quant.get('tendencia', 'Neutro')}
                     ]),
                     hide_index=True,
-                    use_container_width=True
+                    width="stretch"
                 )
 
             score_noticias = meta_ativo.get("score_sentimento_noticias")
@@ -604,7 +604,7 @@ else:
         df_exibicao["data_pregao"] = df_exibicao["data_pregao"].dt.strftime("%d/%m/%Y")
         st.dataframe(
             df_exibicao[["data_pregao", "preco_abertura", "preco_maximo", "preco_minimo", "preco_fechamento", "volume_negociado", "rsi_14", "sma_9", "sma_21"]],
-            use_container_width=True,
+            width="stretch",
             hide_index=True
         )
         csv = df_exibicao.to_csv(index=False).encode("utf-8")
