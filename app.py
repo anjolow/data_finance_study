@@ -322,9 +322,9 @@ if not df_analises.empty:
                     st.markdown(f"**Score da Mídia:** <span class='{badge_class}'>{classif_macro.upper()} ({score_macro:+.2f})</span>", unsafe_allow_html=True)
 
                 for n in noticias_macro:
-                    sent_n = n.get("sentimento", "neutral").upper()
+                    sent_n = (n.get("label_sentimento") or n.get("sentimento") or "neutral").upper()
                     badge_n = f"badge-{sent_n.lower()}"
-                    score_n = n.get("score", 0.0)
+                    score_n = float(n.get("score_sentimento") if n.get("score_sentimento") is not None else n.get("score", 0.0))
                     titulo = n.get("titulo", "Sem título")
                     url = n.get("url", "#")
                     fonte = n.get("fonte", "Mídia")
@@ -508,9 +508,9 @@ else:
 
             if noticias_ativo:
                 for n in noticias_ativo:
-                    sent_n = n.get("sentimento", "neutral").upper()
+                    sent_n = (n.get("label_sentimento") or n.get("sentimento") or "neutral").upper()
                     badge_n = f"badge-{sent_n.lower()}"
-                    score_n = n.get("score", 0.0)
+                    score_n = float(n.get("score_sentimento") if n.get("score_sentimento") is not None else n.get("score", 0.0))
                     titulo = n.get("titulo", "Sem título")
                     url = n.get("url", "#")
                     fonte = n.get("fonte", "Mídia")

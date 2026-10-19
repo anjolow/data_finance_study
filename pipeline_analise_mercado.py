@@ -364,13 +364,17 @@ Gere uma resposta em JSON com duas propriedades:
         noticias_finais = []
         for i, n in enumerate(noticias or [], 1):
             avaliacao = next((a for a in noticias_avaliadas if a.get("indice") == i), {})
+            score_val = float(avaliacao.get("score_sentimento") if avaliacao.get("score_sentimento") is not None else avaliacao.get("score", 0.0))
+            label_val = avaliacao.get("label_sentimento") or avaliacao.get("sentimento") or "Neutral"
             noticias_finais.append({
                 "titulo": n["titulo"],
                 "fonte": n["fonte"],
                 "url": n["url"],
                 "data_publicacao": n["data_publicacao"],
-                "score_sentimento": float(avaliacao.get("score_sentimento", 0.0)),
-                "label_sentimento": avaliacao.get("label_sentimento", "Neutral")
+                "score_sentimento": score_val,
+                "label_sentimento": label_val,
+                "score": score_val,
+                "sentimento": label_val
             })
 
         metadados["noticias_mercado"] = noticias_finais
@@ -416,7 +420,9 @@ def _gerar_analise_fallback(ticker: str, meta_ativo: dict, metricas: dict, notic
             "url": n["url"],
             "data_publicacao": n["data_publicacao"],
             "score_sentimento": 0.0,
-            "label_sentimento": "Neutral"
+            "label_sentimento": "Neutral",
+            "score": 0.0,
+            "sentimento": "Neutral"
         }
         for n in (noticias or [])
     ]
@@ -513,13 +519,17 @@ Gere uma resposta em JSON com:
             noticias_finais = []
             for i, n in enumerate(noticias_macro or [], 1):
                 avaliacao = next((a for a in noticias_avaliadas if a.get("indice") == i), {})
+                score_val = float(avaliacao.get("score_sentimento") if avaliacao.get("score_sentimento") is not None else avaliacao.get("score", 0.0))
+                label_val = avaliacao.get("label_sentimento") or avaliacao.get("sentimento") or "Neutral"
                 noticias_finais.append({
                     "titulo": n["titulo"],
                     "fonte": n["fonte"],
                     "url": n["url"],
                     "data_publicacao": n["data_publicacao"],
-                    "score_sentimento": float(avaliacao.get("score_sentimento", 0.0)),
-                    "label_sentimento": avaliacao.get("label_sentimento", "Neutral")
+                    "score_sentimento": score_val,
+                    "label_sentimento": label_val,
+                    "score": score_val,
+                    "sentimento": label_val
                 })
             meta["noticias_mercado"] = noticias_finais
             if "score_sentimento_noticias" not in meta:
@@ -551,7 +561,9 @@ Gere uma resposta em JSON com:
             "url": n["url"],
             "data_publicacao": n["data_publicacao"],
             "score_sentimento": 0.0,
-            "label_sentimento": "Neutral"
+            "label_sentimento": "Neutral",
+            "score": 0.0,
+            "sentimento": "Neutral"
         }
         for n in (noticias_macro or [])
     ]
