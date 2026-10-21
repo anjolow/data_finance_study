@@ -656,6 +656,21 @@ def executar_pipeline_analise():
 
         logger.info("Ativos encontrados para analise: %s", [a[0] for a in ativos])
 
+        # Verificacao de idempotencia temporal para evitar consumo redundante da API do Gemini
+        force_reanalise = os.getenv("FORCE_REANALISE", "false").lower() == "true"
+        with conn.cursor() as cur:
+            cur.execute("SELECT MAX(data_pregao) FROM Fato_Cotacao;")
+            res_pregao = cur.fetchone()
+            data_max_cotacao = res_pregao[0] if res_pregao else None
+
+            if data_max_cotacao and not force_reanalise:
+                cur.execute("SELECT COUNT(*) FROM Fato_Analise_Mercado WHERE data_analise = %s;", (data_max_cotacao,))
+                total_ja_analisados = cur.fetchone()[0]
+                if total_ja_analisados >= len(ativos) + 1:
+                    logger.info("As analises para o pregao de %s ja estao completas no banco (%d registros encontrados).", data_max_cotacao, total_ja_analisados)
+                    logger.info("Pulando execucao do pipeline de IA para economizar cota da API (para forcar reprocessamento, defina FORCE_REANALISE=true).")
+                    return
+
         registros_para_banco = []
         analises_coletadas = []
         data_referencia = None

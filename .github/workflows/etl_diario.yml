@@ -2,9 +2,14 @@ name: Pipeline ETL Diario - Cotacoes
 
 on:
   schedule:
-    # Executa de segunda a sexta-feira às 22:00 UTC (19:00 Horário de Brasília) após fechamento de mercado
-    - cron: '0 22 * * 1-5'
-  workflow_dispatch: # Permite disparo manual via interface do GitHub
+    # Executa de segunda a sexta-feira às 23:30 UTC (20:30 Horário de Brasília) após fechamento e consolidação do mercado
+    - cron: '30 23 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      force_reanalise:
+        description: 'Forcar reexecucao da analise de IA mesmo se ja existir no banco'
+        required: false
+        default: 'false'
 
 jobs:
   executar_etl:
@@ -44,6 +49,7 @@ jobs:
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FORCE_REANALISE: ${{ inputs.force_reanalise || 'false' }}
         run: |
           python pipeline_analise_mercado.py
 

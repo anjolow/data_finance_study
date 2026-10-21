@@ -11,7 +11,7 @@ Responsabilidades:
 import os
 import sys
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 from decimal import Decimal
 import requests
 import psycopg2
@@ -27,6 +27,9 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("ETL_Cotacoes")
+
+# Fuso horario oficial da B3 (Horario de Brasilia: UTC-3)
+TZ_BRASILIA = timezone(timedelta(hours=-3))
 
 # Carrega variaveis de ambiente (.env) de forma robusta
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -138,13 +141,15 @@ def extrair_cotacoes_api(ticker: str, api_key: str) -> dict:
             return time_series
 
         # Se houver erro ou aviso de limite (Nota: Alpha Vantage Free tem limite de requisicoes)
-        if "Information" in data or "Error Message" in data or api_key == "demo":
-            aviso = data.get("Information") or data.get("Error Message") or "Modo demonstracao/sem chave configurada"
+        if "Information" in data or "Note" in data or "Error Message" in data or not api_key or api_key == "demo":
+            aviso = data.get("Information") or data.get("Note") or data.get("Error Message") or "Modo demonstracao/sem chave configurada"
             logger.warning("Alpha Vantage retornou status especial para %s: %s", ticker, aviso)
             logger.info("Ativando gerador sintetico de cotacoes para teste end-to-end do pipeline...")
             return _gerar_dados_sinteticos(ticker)
 
-        return {}
+        logger.warning("Alpha Vantage retornou payload inesperado para %s (chaves: %s): %s", ticker, list(data.keys()), str(data)[:200])
+        logger.info("Ativando gerador sintetico de cotacoes para contingencia de payload desconhecido...")
+        return _gerar_dados_sinteticos(ticker)
 
     except requests.RequestException as req_err:
         logger.warning("Falha na requisicao HTTP para %s: %s. Utilizando dados de contingencia.", ticker, req_err)
@@ -159,7 +164,7 @@ def _gerar_dados_sinteticos(ticker: str) -> dict:
     from datetime import timedelta
     dados_mock = {}
     base_price = 35.50 if "PETR" in ticker else (62.00 if "VALE" in ticker else 150.00)
-    hoje = date.today()
+    hoje = datetime.now(TZ_BRASILIA).date()
 
     dias_gerados = 0
     i = 0
@@ -284,7 +289,7 @@ def executar_pipeline(tickers: list[str] = None):
         for i, ticker in enumerate(tickers):
             if i > 0:
                 import time
-                time.sleep(1.5)  # Respeito ao rate limit da camada gratuita da API
+                time.sleep(2.0)  # Respeito ao rate limit da camada gratuita da API (1 req/s com margem)
             dados_brutos = extrair_cotacoes_api(ticker, API_KEY)
             registros = transformar_cotacoes(ticker, dados_brutos)
             todos_registros.extend(registros)
@@ -292,6 +297,13 @@ def executar_pipeline(tickers: list[str] = None):
         # Passo 3: Bulk Upsert em lote unico de alta performance
         if todos_registros:
             total_carregados = carregar_cotacoes_bulk(conn, todos_registros)
+        else:
+            logger.error("Nenhum registro de cotacao gerado para os ativos %s. Abortando execucao.", tickers)
+            sys.exit(1)
+
+        if total_carregados == 0:
+            logger.error("Nenhuma cotacao foi persistida no banco de dados. Abortando execucao.")
+            sys.exit(1)
 
         logger.info("================ PIPELINE FINALIZADO COM SUCESSO ================")
         logger.info("Total de cotacoes persistidas/atualizadas: %d", total_carregados)
