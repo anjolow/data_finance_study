@@ -4,7 +4,6 @@
 [![Python](https://img.shields.io/badge/Python-3.12%2B-yellow?logo=python&logoColor=white)](https://www.python.org/)
 [![AI](https://img.shields.io/badge/Google_Gemini-3.8_Flash-orange?logo=google&logoColor=white)](https://ai.google.dev/)
 [![CI/CD](https://img.shields.io/badge/GitHub_Actions-ETL_Diário-green?logo=github-actions&logoColor=white)](https://github.com/features/actions)
-[![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)](LICENSE)
 
 Pipeline de Engenharia de Dados para ingestão, processamento quantitativo e geração de inteligência de mercado com IA generativa em alta volumetria. Desenvolvido com foco em ambientes de **missão crítica**, **baixa latência**, **idempotência estrita** e **modelagem dimensional** para o mercado de capitais.
 
