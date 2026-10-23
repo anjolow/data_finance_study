@@ -191,7 +191,7 @@ WHERE (metadados_ia->>'score_sentimento_noticias')::float > 0.20;
 
 ## ⚙️ Configuração do CI/CD (GitHub Actions)
 
-O workflow `.github/workflows/etl_diario.yml` roda automaticamente de terça a sábado às 09:00 UTC (06:00 BRT), processando e consolidando com segurança total o pregão da véspera após o fechamento da B3 na Alpha Vantage.
+O workflow `.github/workflows/etl_diario.yml` roda automaticamente de terça a sábado às 09:15 UTC (06:15 BRT), processando e consolidando com segurança total o pregão da véspera após o fechamento da B3 na Alpha Vantage.
 
 Cadastre as seguintes **Repository Secrets** no GitHub (**Settings > Secrets and variables > Actions**):
 

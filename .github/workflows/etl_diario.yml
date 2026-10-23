@@ -2,8 +2,8 @@ name: Pipeline ETL Diario - Cotacoes
 
 on:
   schedule:
-    # Executa de terca a sabado as 09:00 UTC (06:00 Horario de Brasilia) processando o pregao consolidado da vespera
-    - cron: '0 9 * * 2-6'
+    # Executa de terca a sabado as 09:15 UTC (06:15 Horario de Brasilia) processando o pregao consolidado da vespera
+    - cron: '15 9 * * 2,3,4,5,6'
   workflow_dispatch:
     inputs:
       force_reanalise:
