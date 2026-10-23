@@ -2,8 +2,8 @@ name: Pipeline ETL Diario - Cotacoes
 
 on:
   schedule:
-    # Executa de segunda a sexta-feira às 23:30 UTC (20:30 Horário de Brasília) após fechamento e consolidação do mercado
-    - cron: '30 23 * * 1-5'
+    # Executa de terca a sabado as 09:00 UTC (06:00 Horario de Brasilia) processando o pregao consolidado da vespera
+    - cron: '0 9 * * 2-6'
   workflow_dispatch:
     inputs:
       force_reanalise:

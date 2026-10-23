@@ -289,10 +289,20 @@ def executar_pipeline(tickers: list[str] = None):
         for i, ticker in enumerate(tickers):
             if i > 0:
                 import time
-                time.sleep(2.0)  # Respeito ao rate limit da camada gratuita da API (1 req/s com margem)
+                time.sleep(12.0)  # Respeito estrito ao limite de 5 calls/minuto da Alpha Vantage Free (1 call a cada 12s)
             dados_brutos = extrair_cotacoes_api(ticker, API_KEY)
             registros = transformar_cotacoes(ticker, dados_brutos)
             todos_registros.extend(registros)
+
+        # Validacao de alinhamento temporal entre os ativos extraidos
+        datas_max_por_ticker = {}
+        for r in todos_registros:
+            t, d = r[0], r[1]
+            if t not in datas_max_por_ticker or d > datas_max_por_ticker[t]:
+                datas_max_por_ticker[t] = d
+        logger.info("Datas maximas extraidas por ativo: %s", datas_max_por_ticker)
+        if len(set(datas_max_por_ticker.values())) > 1:
+            logger.warning("Atencao: Discrepancia temporal na Alpha Vantage entre ativos: %s. Alguns ativos ainda nao consolidaram o pregao mais recente.", datas_max_por_ticker)
 
         # Passo 3: Bulk Upsert em lote unico de alta performance
         if todos_registros:

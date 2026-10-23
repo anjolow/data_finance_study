@@ -656,26 +656,24 @@ def executar_pipeline_analise():
 
         logger.info("Ativos encontrados para analise: %s", [a[0] for a in ativos])
 
-        # Verificacao de idempotencia temporal para evitar consumo redundante da API do Gemini
         force_reanalise = os.getenv("FORCE_REANALISE", "false").lower() == "true"
+
+        # 2. Identifica o pregao alvo oficial (data mais recente em Fato_Cotacao)
         with conn.cursor() as cur:
             cur.execute("SELECT MAX(data_pregao) FROM Fato_Cotacao;")
             res_pregao = cur.fetchone()
-            data_max_cotacao = res_pregao[0] if res_pregao else None
+            data_alvo = res_pregao[0] if res_pregao else None
 
-            if data_max_cotacao and not force_reanalise:
-                cur.execute("SELECT COUNT(*) FROM Fato_Analise_Mercado WHERE data_analise = %s;", (data_max_cotacao,))
-                total_ja_analisados = cur.fetchone()[0]
-                if total_ja_analisados >= len(ativos) + 1:
-                    logger.info("As analises para o pregao de %s ja estao completas no banco (%d registros encontrados).", data_max_cotacao, total_ja_analisados)
-                    logger.info("Pulando execucao do pipeline de IA para economizar cota da API (para forcar reprocessamento, defina FORCE_REANALISE=true).")
-                    return
+        if not data_alvo:
+            logger.warning("Nenhuma cotacao encontrada em Fato_Cotacao para analise.")
+            return
+
+        logger.info("Pregao alvo oficial para analise de mercado: %s (force_reanalise=%s)", data_alvo, force_reanalise)
 
         registros_para_banco = []
         analises_coletadas = []
-        data_referencia = None
 
-        # 2. Processamento individual por ativo (Abordagem C + Abordagem B + Notícias B3)
+        # 3. Processamento individual por ativo (Abordagem C + Abordagem B + Noticias B3)
         for ticker, nome, tipo, setor in ativos:
             meta_ativo = {"nome": nome, "tipo": tipo, "setor": setor}
             historico = buscar_historico_cotacoes(conn, ticker, limite=30)
@@ -684,11 +682,35 @@ def executar_pipeline_analise():
                 logger.warning("Historico insuficiente de cotacoes para %s (%d registros). Pulando.", ticker, len(historico))
                 continue
 
-            # Abordagem C: Indicadores Tecnicos
-            metricas = calcular_indicadores_tecnicos(historico)
-            data_referencia = metricas["data_pregao"]
+            # Alinhamento temporal: verifica se o ativo possui cotacao na data_alvo do pregao
+            data_ativo = historico[-1]["data_pregao"]
+            if data_ativo != data_alvo:
+                logger.warning("Ticker %s com pregao defasado (%s vs alvo %s). Pulando para manter alinhamento temporal.", ticker, data_ativo, data_alvo)
+                continue
 
-            # Extração de notícias B3 em tempo real para o ativo
+            metricas = calcular_indicadores_tecnicos(historico)
+
+            # Verificacao de analise ja existente para este ativo nesta data
+            ja_analisado = False
+            if not force_reanalise:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT 1 FROM Fato_Analise_Mercado WHERE ticker = %s AND data_analise = %s AND fonte_origem = %s;",
+                        (ticker, data_alvo, FONTE_ORIGEM_PADRAO)
+                    )
+                    ja_analisado = cur.fetchone() is not None
+
+            if ja_analisado:
+                logger.info("Analise de %s para o pregao %s ja existe no banco. Pulando chamada da IA.", ticker, data_alvo)
+                analises_coletadas.append({
+                    "ticker": ticker,
+                    "meta": meta_ativo,
+                    "metricas": metricas,
+                    "metadados": {}
+                })
+                continue
+
+            # Extracao de noticias B3 em tempo real para o ativo
             termo_noticia = f"{ticker} {nome}"
             noticias_ativo = buscar_noticias_b3(termo_noticia, limite=3)
 
@@ -696,7 +718,7 @@ def executar_pipeline_analise():
             roteiro, metadados = gerar_analise_ia_gemini(ticker, meta_ativo, metricas, noticias=noticias_ativo)
 
             registros_para_banco.append((
-                metricas["data_pregao"],
+                data_alvo,
                 ticker,
                 FONTE_ORIGEM_PADRAO,
                 roteiro,
@@ -710,20 +732,34 @@ def executar_pipeline_analise():
                 "metadados": metadados
             })
 
-        # 3. Analise Consolidada do Panorama Geral de Mercado (ticker = NULL)
-        if analises_coletadas and data_referencia:
-            logger.info("Gerando Panorama Macro de Mercado para a data %s...", data_referencia)
-            noticias_macro = buscar_noticias_b3("fechamento Ibovespa mercado financeiro acoes B3", limite=4)
-            roteiro_macro, meta_macro = gerar_analise_macro_mercado(data_referencia, analises_coletadas, noticias_macro=noticias_macro)
-            registros_para_banco.append((
-                data_referencia,
-                None,  # ticker = NULL conforme modelagem dimensional para o mercado geral
-                "Gemini Macro Intel",
-                roteiro_macro,
-                meta_macro
-            ))
+        # 4. Analise Consolidada do Panorama Geral de Mercado (ticker = NULL)
+        if analises_coletadas:
+            macro_ja_existe = False
+            if not force_reanalise:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT 1 FROM Fato_Analise_Mercado WHERE ticker IS NULL AND data_analise = %s AND fonte_origem = %s;",
+                        (data_alvo, "Gemini Macro Intel")
+                    )
+                    macro_ja_existe = cur.fetchone() is not None
 
-        # 4. Ingestao em Lote no PostgreSQL
+            if macro_ja_existe:
+                logger.info("Panorama Macro de Mercado para %s ja existe no banco. Pulando chamada da IA.", data_alvo)
+            else:
+                logger.info("Gerando Panorama Macro de Mercado para a data %s (%d ativos alinhados)...", data_alvo, len(analises_coletadas))
+                noticias_macro = buscar_noticias_b3("fechamento Ibovespa mercado financeiro acoes B3", limite=4)
+                roteiro_macro, meta_macro = gerar_analise_macro_mercado(data_alvo, analises_coletadas, noticias_macro=noticias_macro)
+                registros_para_banco.append((
+                    data_alvo,
+                    None,  # ticker = NULL conforme modelagem dimensional para o mercado geral
+                    "Gemini Macro Intel",
+                    roteiro_macro,
+                    meta_macro
+                ))
+        else:
+            logger.warning("Nenhum ativo alinhado para a data %s. Panorama Macro nao sera gerado.", data_alvo)
+
+        # 5. Ingestao em Lote no PostgreSQL
         if registros_para_banco:
             total = carregar_analises_bulk(conn, registros_para_banco)
             logger.info("================ PIPELINE DE ANALISE FINALIZADO COM SUCESSO ================")
