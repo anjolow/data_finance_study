@@ -310,7 +310,7 @@ MÉTRICAS QUANTITATIVAS:
 {bloco_noticias}
 INSTRUÇÕES OBRIGATÓRIAS:
 Gere uma resposta em JSON com duas propriedades:
-1. "roteiro_texto": Texto fluido, analítico e formal em português (2 parágrafos concisos) descrevendo o comportamento do papel no pregão. Correlacione os números técnicos com os fatos e catalisadores noticiosos listados (se houver), citando suportes, resistências e pressão compradora/vendedora.
+1. "roteiro_texto": Texto fluido, analítico e formal em português (2 parágrafos concisos) descrevendo o comportamento do papel no pregão. Correlacione os números técnicos com os fatos e catalisadores noticiosos listados (se houver), citando suportes, resistências e pressão compradora/vendedora. REGRA DE FORMATAÇÃO: NÃO coloque o texto entre aspas ou asteriscos e NUNCA utilize delimitadores de fórmulas matemáticas/LaTeX (como $ ... $).
 2. "metadados_ia": Um objeto JSON contendo:
    - "sentimento": "bullish" (alta), "bearish" (baixa) ou "neutral" (neutro).
    - "confianca_score": número float entre 0.0 e 1.0.
@@ -345,7 +345,11 @@ Gere uma resposta em JSON com duas propriedades:
         raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
         parsed = json.loads(raw_text)
 
-        roteiro_texto = parsed.get("roteiro_texto", "")
+        roteiro_texto = parsed.get("roteiro_texto", "").strip()
+        while (roteiro_texto.startswith('"') and roteiro_texto.endswith('"')) or (roteiro_texto.startswith("'") and roteiro_texto.endswith("'")):
+            roteiro_texto = roteiro_texto[1:-1].strip()
+        while (roteiro_texto.startswith('*') and roteiro_texto.endswith('*')) or (roteiro_texto.startswith('_') and roteiro_texto.endswith('_')):
+            roteiro_texto = roteiro_texto[1:-1].strip()
         metadados = parsed.get("metadados_ia", {})
 
         # Anexa o snapshot quantitativo oficial aos metadados JSONB para consulta auditavel
@@ -487,7 +491,7 @@ Escreva o 'Panorama Geral de Fechamento de Mercado' para a data {data_pregao}, a
 - Destaques individuais: {destaques_str}
 {bloco_noticias}
 Gere uma resposta em JSON com:
-1. "roteiro_texto": Parecer macroeconômico formal e executivo (2 parágrafos) sintetizando o tom geral do pregão, apetite a risco, comportamento setorial, repercussão das manchetes macro (se houver) e perspectivas para os próximos pregões.
+1. "roteiro_texto": Parecer macroeconômico formal e executivo (2 parágrafos) sintetizando o tom geral do pregão, apetite a risco, comportamento setorial, repercussão das manchetes macro (se houver) e perspectivas para os próximos pregões. REGRA DE FORMATAÇÃO: NÃO coloque o texto entre aspas ou asteriscos e NUNCA utilize delimitadores de fórmulas matemáticas/LaTeX (como $ ... $).
 2. "metadados_ia": Objeto JSON com:
    - "sentimento": "{sentimento_macro}"
    - "confianca_score": 0.90
@@ -506,7 +510,11 @@ Gere uma resposta em JSON com:
             resp = requests.post(url, json=payload, timeout=20)
             resp.raise_for_status()
             parsed = json.loads(resp.json()["candidates"][0]["content"]["parts"][0]["text"])
-            roteiro = parsed.get("roteiro_texto", "")
+            roteiro = parsed.get("roteiro_texto", "").strip()
+            while (roteiro.startswith('"') and roteiro.endswith('"')) or (roteiro.startswith("'") and roteiro.endswith("'")):
+                roteiro = roteiro[1:-1].strip()
+            while (roteiro.startswith('*') and roteiro.endswith('*')) or (roteiro.startswith('_') and roteiro.endswith('_')):
+                roteiro = roteiro[1:-1].strip()
             meta = parsed.get("metadados_ia", {})
             meta["resumo_estatistico"] = {
                 "total_ativos": total,

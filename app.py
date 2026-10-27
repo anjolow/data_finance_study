@@ -100,6 +100,33 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+def formatar_texto_html(texto: str) -> str:
+    """
+    Higieniza e formata textos de analise para exibicao no Streamlit:
+    1. Remove aspas externas e asteriscos residuais envolventes.
+    2. Substitui o caractere '$' por '&#36;' (entidade HTML) para impedir que o
+       parser do Streamlit/KaTeX formate valores monetarios (ex: R$ 47,00) como equacoes matematicas.
+    3. Divide paragrafos por quebra de linha dupla e os envolve em tags <p> estilizadas.
+    """
+    if not texto:
+        return ""
+    t = str(texto).strip()
+    while (t.startswith('"') and t.endswith('"')) or (t.startswith("'") and t.endswith("'")):
+        t = t[1:-1].strip()
+    while (t.startswith("*") and t.endswith("*")) or (t.startswith("_") and t.endswith("_")):
+        t = t[1:-1].strip()
+    
+    # Substitui $ por entidade HTML para evitar interpretacao indevida como formula KaTeX
+    t = t.replace("$", "&#36;")
+    
+    paragrafos = [p.strip() for p in t.split("\n\n") if p.strip()]
+    if not paragrafos:
+        paragrafos = [t]
+    return "".join([f"<p style='margin-bottom: 10px; color: #D1D4DC; font-size: 0.95rem; line-height: 1.6;'>{p}</p>" for p in paragrafos])
+
+
+
+
 # -----------------------------------------------------------------------------
 # 2. CONEXÃO COM O BANCO DE DADOS (SUPABASE / POSTGRESQL)
 # -----------------------------------------------------------------------------
@@ -314,7 +341,12 @@ if not df_analises.empty:
                 st.metric("Apetite a Risco", meta_macro.get("apetite_a_risco", "Moderado").capitalize())
 
             st.markdown(f"**Data de Referência:** {analise_macro['data_analise'].strftime('%d/%m/%Y')} | **Fonte:** *{analise_macro['fonte_origem']}*")
-            st.markdown(f"> *\"{analise_macro['roteiro_texto']}\"*")
+            texto_macro_html = formatar_texto_html(analise_macro['roteiro_texto'])
+            st.markdown(f"""
+            <div class='metric-card' style='border-left: 4px solid #3875F6; padding: 14px 18px; margin-top: 10px;'>
+                {texto_macro_html}
+            </div>
+            """, unsafe_allow_html=True)
 
             noticias_macro = meta_macro.get("noticias_mercado", [])
             if noticias_macro:
@@ -568,9 +600,9 @@ else:
                 <div style='margin-bottom: 12px;'>
                     {''.join([f"<span class='tag-driver'>#{d}</span>" for d in meta_ativo.get('drivers', [])])}
                 </div>
-                <p style='color: #D1D4DC; font-size: 0.95rem; line-height: 1.6;'>
-                    {analise_ativo['roteiro_texto']}
-                </p>
+                <div>
+                    {formatar_texto_html(analise_ativo['roteiro_texto'])}
+                </div>
                 <div style='color: #5E6673; font-size: 0.8rem; border-top: 1px solid #2A2E39; padding-top: 8px;'>
                     Data da Análise: {analise_ativo['data_analise'].strftime('%d/%m/%Y')} | Fonte: {analise_ativo['fonte_origem']}
                 </div>
